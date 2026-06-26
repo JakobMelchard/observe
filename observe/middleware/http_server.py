@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
+from importlib.resources import files
 
 from observe import router
 from observe.config.config import ObserveConfig
 from observe.sink.sink import FeedbackEvent
 
-SHIM_DIR = Path(__file__).resolve().parent.parent / "shim"
+SHIM_DIR = files("observe") / "shim"
 
 
 def patch_handler(handler_class, config: ObserveConfig):
