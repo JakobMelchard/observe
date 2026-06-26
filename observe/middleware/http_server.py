@@ -51,7 +51,7 @@ def patch_handler(handler_class, config: ObserveConfig):
             return True
         return False
 
-    def _is_observe_post(self, self_obj, path):
+    def _is_observe_post(self_obj, path):
         if path == "/__observe__/feedback":
             length = int(self_obj.headers.get("Content-Length", 0))
             body = self_obj.rfile.read(length) if length else b"{}"
