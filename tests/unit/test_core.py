@@ -187,3 +187,38 @@ def test_inject_only_first_head(core):
 
 def test_shim_is_cached(core):
     assert core.shim("observe.js") is core.shim("observe.js")
+
+
+class TestInjectionOrder:
+    """The shim is a classic script: it runs as soon as it loads.
+
+    Anything the page must give it has to be in the document before the
+    `<script src>` tag, or the shim sees `undefined` and quietly uses its
+    defaults — which is what made `register_sw=False` do nothing.
+    """
+
+    def test_config_is_set_before_the_shim_is_loaded(self):
+        core = ObserveCore(ObserveConfig())
+        page = core.inject(b"<!doctype html><html><head></head><body></body></html>")
+        assert page.index(b"__OBSERVE_CONFIG__") < page.index(b"observe.js")
+
+    def test_options_reach_the_page(self):
+        core = ObserveCore(ObserveConfig(register_sw=False, feedback_label="Sag was"))
+        page = core.inject(b"<html><head></head></html>")
+        assert b'"registerSw": false' in page
+        assert b"Sag was" in page
+
+
+class TestServiceWorkerScope:
+    def test_the_worker_is_allowed_the_whole_origin(self):
+        """Served from `__observe__/`, it could otherwise only claim that path."""
+        core = ObserveCore(ObserveConfig())
+        route = core.route("/__observe__/observe.sw.js", "GET")
+        assert route is not None
+        assert ("Service-Worker-Allowed", "/") in core.reply(route).headers
+
+    def test_the_ordinary_shim_carries_no_extra_headers(self):
+        core = ObserveCore(ObserveConfig())
+        route = core.route("/__observe__/observe.js", "GET")
+        assert route is not None
+        assert core.reply(route).headers == ()

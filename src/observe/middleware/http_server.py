@@ -58,6 +58,8 @@ def _emit(handler: Any, reply: Reply) -> None:
     handler.send_response(reply.status)
     handler.send_header("Content-Type", reply.content_type)
     handler.send_header("Content-Length", str(len(reply.body)))
+    for name, value in reply.headers:
+        handler.send_header(name, value)
     handler.end_headers()
     handler.wfile.write(reply.body)
 

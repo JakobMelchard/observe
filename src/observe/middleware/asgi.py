@@ -90,6 +90,7 @@ async def _emit(send: Send, reply: Reply) -> None:
             "headers": [
                 (b"content-type", reply.content_type.encode()),
                 (b"content-length", str(len(reply.body)).encode()),
+                *((k.encode(), v.encode()) for k, v in reply.headers),
             ],
         }
     )

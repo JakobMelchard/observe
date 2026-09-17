@@ -25,6 +25,11 @@ JSON = "application/json"
 SHIM_DIR = files("observe") / "shim"
 SHIMS = ("observe.js", "observe.sw.js")
 
+#: A worker may only claim a scope at or below its own path, unless the
+#: response says otherwise. The service worker is served from `__observe__/`
+#: but has to see the whole origin to be of any use.
+SHIM_HEADERS = {"observe.sw.js": (("Service-Worker-Allowed", "/"),)}
+
 #: A full page announces itself in its opening bytes.
 DOCUMENT_MARKERS = (b"<!doctype html", b"<html", b"<head")
 
@@ -70,6 +75,8 @@ class Reply:
     status: int
     content_type: str
     body: bytes
+    #: Anything beyond content-type and length. Rare enough to default empty.
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 class ObserveCore:
@@ -85,9 +92,14 @@ class ObserveCore:
                 "registerSw": cfg.register_sw,
             }
         ).encode()
+        # Config first. The shim is a classic script, so it runs the moment
+        # it loads — before the parser reaches anything after it. Injected the
+        # other way round, every option silently fell back to its default.
         self._tag = (
-            b'<script src="/__observe__/observe.js"></script>'
-            b"<script>window.__OBSERVE_CONFIG__ = " + self.config_bytes + b";</script>"
+            b"<script>window.__OBSERVE_CONFIG__ = "
+            + self.config_bytes
+            + b";</script>"
+            + b'<script src="/__observe__/observe.js"></script>'
         )
         self._shims: dict[str, bytes] = {}
 
@@ -114,7 +126,7 @@ class ObserveCore:
     def reply(self, route: Route, body: bytes = b"", content_type: str = "") -> Reply:
         """Produce the response for a matched route, pushing events as a side effect."""
         if route.kind == "shim":
-            return Reply(200, JAVASCRIPT, self.shim(route.name))
+            return Reply(200, JAVASCRIPT, self.shim(route.name), SHIM_HEADERS.get(route.name, ()))
         if route.kind == "config":
             return Reply(200, JSON, self.config_bytes)
         if route.kind == "feedback":

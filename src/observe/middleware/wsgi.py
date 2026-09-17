@@ -62,6 +62,7 @@ def _emit(reply: Reply, start_response: StartResponse) -> list[bytes]:
     headers = [
         ("Content-Type", reply.content_type),
         ("Content-Length", str(len(reply.body))),
+        *reply.headers,
     ]
     start_response(f"{reply.status} OK", headers)
     return [reply.body]
