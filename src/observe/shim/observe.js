@@ -107,19 +107,29 @@
   }
 
   // 7. feedback trigger button
-  var btn = document.createElement("button");
-  btn.textContent = feedbackLabel;
-  btn.style.cssText =
-    "position:fixed;bottom:1rem;right:1rem;z-index:99999;opacity:0;" +
-    "transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid #888;" +
-    "border-radius:4px;background:#fff;cursor:pointer;font-size:0.875rem;";
-  btn.onmouseenter = function () { btn.style.opacity = "1"; };
-  document.body.addEventListener("mouseleave", function () {
-    btn.style.opacity = "0";
+  //
+  // The shim is injected into <head>, so it runs before <body> exists.
+  // Everything that touches the DOM waits for it.
+  function whenReady(fn) {
+    if (document.body) { fn(); return; }
+    document.addEventListener("DOMContentLoaded", fn, { once: true });
+  }
+
+  whenReady(function () {
+    var btn = document.createElement("button");
+    btn.textContent = feedbackLabel;
+    btn.style.cssText =
+      "position:fixed;bottom:1rem;right:1rem;z-index:99999;opacity:0;" +
+      "transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid #888;" +
+      "border-radius:4px;background:#fff;cursor:pointer;font-size:0.875rem;";
+    btn.onmouseenter = function () { btn.style.opacity = "1"; };
+    document.body.addEventListener("mouseleave", function () {
+      btn.style.opacity = "0";
+    });
+    btn.onclick = function () {
+      var msg = prompt("Your feedback:");
+      if (msg) submitFeedback(msg);
+    };
+    document.body.appendChild(btn);
   });
-  btn.onclick = function () {
-    var msg = prompt("Your feedback:");
-    if (msg) submitFeedback(msg);
-  };
-  document.body.appendChild(btn);
 })(window.__OBSERVE_CONFIG__);
