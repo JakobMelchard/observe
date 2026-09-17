@@ -7,9 +7,10 @@ name = "observe-sentry"
 version = "0.1.0"
 description = "Sentry sink for observe sidecar"
 requires-python = ">=3.11"
+# The consumer picks where `observe` comes from via [tool.uv.sources].
 dependencies = [
     "sentry-sdk>=2",
-    "observe @ git+https://github.com/JakobMelchard/observe.git",
+    "observe",
 ]
 
 [project.optional-dependencies]
@@ -19,3 +20,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+observe_sentry = ["py.typed"]

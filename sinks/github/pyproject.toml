@@ -7,8 +7,9 @@ name = "observe-github"
 version = "0.1.0"
 description = "GitHub issue sink for observe"
 requires-python = ">=3.11"
+# The consumer picks where `observe` comes from via [tool.uv.sources].
 dependencies = [
-    "observe @ git+https://github.com/JakobMelchard/observe.git",
+    "observe",
 ]
 
 [project.optional-dependencies]
@@ -18,3 +19,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+observe_github = ["py.typed"]

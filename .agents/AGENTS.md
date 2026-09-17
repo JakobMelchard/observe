@@ -6,7 +6,7 @@ Python library for instrumenting apps with error tracking and user feedback. Plu
 
 ```
 observe/
-├── observe/                    # Core package
+├── src/observe/                # Core package
 │   ├── core.py                # ObserveCore — transport-agnostic half
 │   ├── router.py              # Global event router
 │   ├── config/config.py       # ObserveConfig + TOML loader

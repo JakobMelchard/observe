@@ -63,7 +63,7 @@ Browser/Client                 App Server                    Sinks
 └───────────┘              └──────────────────┘
 ```
 
-`observe/core.py` owns everything that does not depend on the transport:
+`src/observe/core.py` owns everything that does not depend on the transport:
 which paths belong to observe, what each replies, which responses get the shim
 injected, and how OTLP payloads reach the router. Each middleware is a thin
 adapter over it that only reads bodies and emits responses.
@@ -75,16 +75,16 @@ condition), `full` (local processing + forwarding).
 
 | Path | What |
 |------|------|
-| `observe/core.py` | Transport-agnostic routing, injection, OTLP ingest |
-| `observe/router.py` | Global event router — register sinks, push errors/feedback |
-| `observe/sink/sink.py` | `ErrorEvent`, `FeedbackEvent` dataclasses + `Sink` protocol |
-| `observe/config/config.py` | `ObserveConfig` dataclass + `toml` loader |
-| `observe/receiver/otlp.py` | OTLP span/log → `ErrorEvent` converter |
-| `observe/middleware/wsgi.py` | WSGI adapter |
-| `observe/middleware/asgi.py` | ASGI adapter (FastAPI/Starlette) |
-| `observe/middleware/http_server.py` | stdlib `http.server` handler patch |
-| `observe/shim/observe.js` | Browser shim — fetches, errors, feedback UI |
-| `observe/shim/observe.sw.js` | Service worker — offline queue, OTLP buffering |
+| `src/observe/core.py` | Transport-agnostic routing, injection, OTLP ingest |
+| `src/observe/router.py` | Global event router — register sinks, push errors/feedback |
+| `src/observe/sink/sink.py` | `ErrorEvent`, `FeedbackEvent` dataclasses + `Sink` protocol |
+| `src/observe/config/config.py` | `ObserveConfig` dataclass + `toml` loader |
+| `src/observe/receiver/otlp.py` | OTLP span/log → `ErrorEvent` converter |
+| `src/observe/middleware/wsgi.py` | WSGI adapter |
+| `src/observe/middleware/asgi.py` | ASGI adapter (FastAPI/Starlette) |
+| `src/observe/middleware/http_server.py` | stdlib `http.server` handler patch |
+| `src/observe/shim/observe.js` | Browser shim — fetches, errors, feedback UI |
+| `src/observe/shim/observe.sw.js` | Service worker — offline queue, OTLP buffering |
 | `sinks/sentry/` | Sentry sink (separate package) |
 | `sinks/github/` | GitHub issue sink (separate package) |
 | `contrib/` | Unmaintained Go and Cloudflare Workers ports |

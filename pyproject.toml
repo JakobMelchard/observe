@@ -18,10 +18,10 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["observe*"]
+where = ["src"]
 
 [tool.setuptools.package-data]
-observe = ["shim/*.js"]
+observe = ["shim/*.js", "py.typed"]
 
 [tool.ruff]
 line-length = 100
@@ -41,14 +41,23 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["observe", "sinks"]
-mypy_path = ["sinks/github/src", "sinks/sentry/src"]
+files = ["src", "sinks", "tests"]
+mypy_path = ["src", "sinks/github/src", "sinks/sentry/src"]
 exclude = "contrib"
 
 [[tool.mypy.overrides]]
 module = "sentry_sdk.*"
 ignore_missing_imports = true
 
+# Tests are checked, but test doubles and fixtures are not required to be
+# annotated — strict typing is for the code that ships.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["sinks/github/src", "sinks/sentry/src"]
+pythonpath = ["src", "sinks/github/src", "sinks/sentry/src"]
