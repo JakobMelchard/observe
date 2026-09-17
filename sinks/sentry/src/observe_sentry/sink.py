@@ -30,8 +30,8 @@ class SentrySink:
         )
 
 
-def _parse_timestamp(ts: str) -> float | None:
-    try:
-        return float(ts) / 1e9 if ts and ts.isdigit() else ts
-    except (ValueError, TypeError):
+def _parse_timestamp(ts: str) -> float | str | None:
+    """Sentry takes Unix seconds or an ISO 8601 string; OTLP sends nanoseconds."""
+    if not ts:
         return None
+    return float(ts) / 1e9 if ts.isdigit() else ts

@@ -11,6 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+    "mypy>=1.11",
     "pytest>=8",
     "ruff>=0.5",
     "werkzeug>=3",
@@ -25,12 +26,29 @@ observe = ["shim/*.js"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["contrib"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "N", "UP", "W", "PYI"]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ARG", "PTH", "RET", "TID", "PYI"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test doubles must match the Sink / ASGI signatures they stand in for.
+"tests/**" = ["ARG001", "ARG002", "ARG005"]
 
 [tool.ruff.format]
 quote-style = "double"
 
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["observe", "sinks"]
+mypy_path = ["sinks/github/src", "sinks/sentry/src"]
+exclude = "contrib"
+
+[[tool.mypy.overrides]]
+module = "sentry_sdk.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["sinks/github/src", "sinks/sentry/src"]

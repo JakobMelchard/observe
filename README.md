@@ -21,6 +21,17 @@ router.register(SentrySink())
 app = ObserveMiddleware(my_wsgi_app, cfg)
 ```
 
+Feedback straight to GitHub issues:
+
+```python
+from observe_github import GitHubSink
+
+router.register(GitHubSink(enrich=my_enricher))
+```
+
+`enrich` is any `FeedbackEvent -> {"label", "title", "description"} | None`. The
+sink never knows what produced it — an LLM, a heuristic, or nothing at all.
+
 Configure via `observe.toml`:
 
 ```toml
@@ -36,27 +47,65 @@ enrich_hook = "__observe_enrich__"
 register_sw = true
 ```
 
+## Design
+
+In-process. No daemon, no separate process, no infrastructure dependency.
+
+```
+Browser/Client                 App Server                    Sinks
+┌───────────┐    errors    ┌──────────────────┐   events   ┌──────────┐
+│ observe.js│─────────────→│ middleware       │───────────→│ Sentry   │
+│  (shim)   │   feedback   │  (thin adapter)  │            ├──────────┤
+│           │─────────────→│      ↓           │───────────→│ GitHub   │
+│           │     OTLP     │  ObserveCore     │            ├──────────┤
+│ observe.  │─────────────→│      ↓           │───────────→│ your own │
+│   sw.js   │              │  router          │            └──────────┘
+└───────────┘              └──────────────────┘
+```
+
+`observe/core.py` owns everything that does not depend on the transport:
+which paths belong to observe, what each replies, which responses get the shim
+injected, and how OTLP payloads reach the router. Each middleware is a thin
+adapter over it that only reads bodies and emits responses.
+
+**Profiles:** `relay` (forward immediately), `buffer` (queue in memory, flush on
+condition), `full` (local processing + forwarding).
+
 ## Structure
 
 | Path | What |
 |------|------|
+| `observe/core.py` | Transport-agnostic routing, injection, OTLP ingest |
 | `observe/router.py` | Global event router — register sinks, push errors/feedback |
 | `observe/sink/sink.py` | `ErrorEvent`, `FeedbackEvent` dataclasses + `Sink` protocol |
 | `observe/config/config.py` | `ObserveConfig` dataclass + `toml` loader |
 | `observe/receiver/otlp.py` | OTLP span/log → `ErrorEvent` converter |
-| `observe/middleware/wsgi.py` | WSGI middleware — injects shim, captures errors |
-| `observe/middleware/asgi.py` | ASGI middleware (FastAPI/Starlette) |
-| `observe/middleware/http_server.py` | stdlib `http.server` monkey-patch |
-| `observe/middleware/go.go` | Go `net/http` middleware |
-| `observe/middleware/worker.js` | Cloudflare Workers middleware |
+| `observe/middleware/wsgi.py` | WSGI adapter |
+| `observe/middleware/asgi.py` | ASGI adapter (FastAPI/Starlette) |
+| `observe/middleware/http_server.py` | stdlib `http.server` handler patch |
 | `observe/shim/observe.js` | Browser shim — fetches, errors, feedback UI |
 | `observe/shim/observe.sw.js` | Service worker — offline queue, OTLP buffering |
-| `sinks/sentry/*` | Sentry sink (separate package) |
+| `sinks/sentry/` | Sentry sink (separate package) |
+| `sinks/github/` | GitHub issue sink (separate package) |
+| `contrib/` | Unmaintained Go and Cloudflare Workers ports |
+
+## Endpoints
+
+Every middleware serves the same five paths:
+
+| Path | Method | What |
+|------|--------|------|
+| `/__observe__/observe.js` | GET | Browser shim |
+| `/__observe__/observe.sw.js` | GET | Service worker |
+| `/__observe__/config` | GET | Frontend config JSON |
+| `/__observe__/feedback` | POST | `FeedbackEvent` → router |
+| `/__observe__/otlp/...` | POST | OTLP JSON → `ErrorEvent`s → router |
+
+Everything else is delegated to the wrapped app. 2xx `text/html` responses get
+the shim injected after `<head>`; binary extensions are skipped untouched.
 
 ## Runtime
 
-- No dependencies for core package
-- Sinks are optional plugins
+- No dependencies for the core package
+- Sinks are optional plugins, each its own distributable package
 - Runs in-process — no daemon, no sidecar process
-- All event types: `ErrorEvent`, `FeedbackEvent`
-- Profiles: `relay` (forward), `full` (local processing), `buffer` (queued)

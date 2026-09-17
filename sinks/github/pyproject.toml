@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "observe-github"
+version = "0.1.0"
+description = "GitHub issue sink for observe"
+requires-python = ">=3.11"
+dependencies = [
+    "observe @ git+https://github.com/JakobMelchard/observe.git",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -7,24 +7,26 @@ Python library for instrumenting apps with error tracking and user feedback. Plu
 ```
 observe/
 ├── observe/                    # Core package
+│   ├── core.py                # ObserveCore — transport-agnostic half
 │   ├── router.py              # Global event router
 │   ├── config/config.py       # ObserveConfig + TOML loader
 │   ├── receiver/otlp.py       # OTLP → ErrorEvent converter
-│   ├── middleware/             # Per-framework middleware
-│   │   ├── wsgi.py            # WSGI middleware
-│   │   ├── asgi.py            # ASGI middleware
-│   │   ├── http_server.py     # stdlib http.server patch
-│   │   ├── go.go              # Go net/http middleware
-│   │   └── worker.js          # CF Workers middleware
+│   ├── middleware/             # Thin adapters over ObserveCore
+│   │   ├── wsgi.py            # WSGI
+│   │   ├── asgi.py            # ASGI
+│   │   └── http_server.py     # stdlib http.server patch
 │   ├── shim/
 │   │   ├── observe.js         # Browser shim
 │   │   └── observe.sw.js      # Service worker buffer
 │   └── sink/sink.py           # Event types + Sink protocol
 ├── sinks/sentry/              # Sentry sink package
-│   └── src/observe_sentry/
+├── sinks/github/              # GitHub issue sink package
+├── contrib/                   # Unmaintained Go / CF Workers ports
 ├── tests/
-│   ├── unit/test_middleware.py
-│   ├── e2e/test_sentry.py
+│   ├── unit/test_core.py      # ObserveCore contract
+│   ├── unit/test_adapters.py  # ASGI + http.server adapters
+│   ├── unit/test_middleware.py# WSGI adapter
+│   ├── e2e/test_sentry.py     # Sink event shapes
 │   └── fixture/
 └── pyproject.toml
 ```
@@ -32,36 +34,47 @@ observe/
 ## Commands
 
 ```sh
-uv sync                          # install deps
+uv sync --extra dev              # install deps
 uv run pytest                    # run tests
+uv run mypy                      # type check (strict)
 uv run ruff check .              # lint
-uv run ruff format --check .     # format check
+uv run ruff format .             # format
 ```
+
+CI runs all four on every PR (`.github/workflows/ci.yml`).
 
 ## Key patterns
 
-- **Sink protocol**: implement `push_error(event)` + `push_feedback(event)`
-- **Router**: singleton — register sinks, broadcasts events to all
-- **Middleware**: wraps app, injects browser shim into HTML, serves endpoints at `__observe__/`
-- **Shim**: client-side JS captures fetch errors, uncaught exceptions, unhandled rejections
-- **Config**: auto-discovers `observe.toml` or `pyproject.toml` in cwd
-- **No dependencies**: core package has zero runtime deps
-- **Optional sinks**: `observe-sentry` depends on `sentry-sdk`
+- **ObserveCore is the single implementation.** Route matching, the config
+  blob, shim caching, script-tag injection, binary-extension skipping and OTLP
+  ingest live in `observe/core.py` and nowhere else. If you find yourself
+  writing any of them in a middleware, you are writing a bug.
+- **Middlewares are adapters.** They read a request body the way their
+  transport does, call `core.route()` / `core.reply()`, emit a response, and
+  call `core.inject()` on 2xx HTML. Nothing else.
+- **Sink protocol**: implement `push_error(event)` + `push_feedback(event)`.
+- **Router**: singleton — register sinks, broadcasts events to all.
+- **Config**: auto-discovers `observe.toml` or `pyproject.toml` in cwd. The
+  `FIELDS` table maps `(section, key) → attribute`; add a row, not an `if`.
+- **No dependencies**: core package has zero runtime deps. Sinks may have them.
 
 ## Adding a middleware
 
-1. Create `observe/middleware/<framework>.py`
-2. Follow the WSGI pattern: accept app + config, inject shim into HTML, serve `__observe__/` endpoints
-3. Add tests in `tests/unit/`
+1. Create `observe/middleware/<transport>.py`.
+2. Hold an `ObserveCore`. Implement only: read body, emit reply, intercept the
+   wrapped app's response, inject. Target under 100 lines.
+3. Add adapter tests in `tests/unit/test_adapters.py`.
 
 ## Adding a sink
 
-1. Create `sinks/<name>/` with `pyproject.toml`
-2. Implement `Sink` protocol from `observe.sink.sink`
-3. Add e2e test in `tests/e2e/`
+1. Create `sinks/<name>/` with a `pyproject.toml` (copy `sinks/github/`).
+2. Implement the `Sink` protocol from `observe.sink.sink`.
+3. Add `sinks/<name>/src` to `pythonpath` and `mypy_path` in the root
+   `pyproject.toml` so tests and mypy see it.
+4. Add tests in `tests/e2e/`.
 
 ## Known issues
 
-- No protobuf OTLP support yet — JSON only
-- Service worker uses IndexedDB for offline queue (no Cache API)
-- Go middleware is minimal — OTLP parsing not fully implemented
+- No protobuf OTLP support — JSON only. Non-JSON content types are ignored.
+- Service worker uses IndexedDB for the offline queue (no Cache API).
+- `contrib/` ports are not linted, typed, tested, or packaged.
