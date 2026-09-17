@@ -146,10 +146,39 @@ def test_inject_after_head(core):
     assert out.index(b"observe.js") < out.index(b"<title>")
 
 
-def test_inject_without_head_prepends(core):
-    out = core.inject(b"<p>bare</p>")
+def test_inject_prepends_when_a_document_has_no_head(core):
+    out = core.inject(b"<html><body>bare</body></html>")
     assert out.startswith(b"<script")
-    assert out.endswith(b"<p>bare</p>")
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    [
+        b"<p>bare</p>",
+        b'<div id="queue"><table></table></div>',
+        b"",
+    ],
+)
+def test_fragments_are_never_injected(core, fragment):
+    """htmx swaps this into a page that already has the shim."""
+    assert core.inject(fragment) == fragment
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (b"<!DOCTYPE html><html>", True),
+        (b"<html lang='de'>", True),
+        (b"<head><title>t</title></head>", True),
+        (b"\n  <!doctype html>", True),
+        (b"<div>fragment</div>", False),
+        (b"<p>x</p>" * 500 + b"<html>", False),
+    ],
+)
+def test_is_document(body, expected):
+    from observe.core import is_document
+
+    assert is_document(body) is expected
 
 
 def test_inject_only_first_head(core):

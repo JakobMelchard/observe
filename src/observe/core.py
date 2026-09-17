@@ -25,6 +25,12 @@ JSON = "application/json"
 SHIM_DIR = files("observe") / "shim"
 SHIMS = ("observe.js", "observe.sw.js")
 
+#: A full page announces itself in its opening bytes.
+DOCUMENT_MARKERS = (b"<!doctype html", b"<html", b"<head")
+
+#: How far into a response to look for those markers.
+MARKER_WINDOW = 1024
+
 BINARY_EXT = frozenset(
     {
         "png",
@@ -127,7 +133,15 @@ class ObserveCore:
         return 200 <= status < 300 and "text/html" in content_type
 
     def inject(self, html: bytes) -> bytes:
-        """Insert the shim script tags after ``<head>``, or prepend if absent."""
+        """Insert the shim script tags into a full document.
+
+        Partial HTML is returned untouched. Fragment-swapping clients such as
+        htmx serve HTML that is spliced into a page that already has the
+        shim; injecting there would re-run it on every swap and push script
+        tags into fragments that must not contain any.
+        """
+        if not is_document(html):
+            return html
         if b"<head>" in html:
             return html.replace(b"<head>", b"<head>" + self._tag, 1)
         return self._tag + html
@@ -142,6 +156,12 @@ class ObserveCore:
                 user={str(k): str(v) for k, v in _as_dict(data.get("user")).items()},
             )
         )
+
+
+def is_document(html: bytes) -> bool:
+    """True when a response is a whole page rather than a fragment."""
+    head = html[:MARKER_WINDOW].lower()
+    return any(marker in head for marker in DOCUMENT_MARKERS)
 
 
 def _loads(body: bytes) -> dict[str, object]:
