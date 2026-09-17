@@ -1,20 +1,14 @@
 name: ci
 
 on:
-  pull_request:
   push:
     branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync --extra dev
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy
-      - run: uv run pytest -q
+  python:
+    uses: JakobMelchard/.github/.github/workflows/python.yml@main
+    with:
+      python-version: "3.11"
+      package-manager: uv
