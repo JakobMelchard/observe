@@ -1,0 +1,5 @@
+# VENDORED from JakobMelchard/.config/gitleaks/gitleaks.toml — do not edit here; run config-sync.
+# Org gitleaks config. The hooks and the gitleaks composite action pick up
+# .gitleaks.toml at the repo root, which config-sync writes from this file.
+[extend]
+useDefault = true

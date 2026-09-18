@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# VENDORED from JakobMelchard/.githooks/pre-commit@main — do not edit.
+# Refresh: hooks-install  (JakobMelchard/bin), or see JakobMelchard/.githooks/install.
+# Repo-specific checks belong in .githooks/pre-commit.local (executable).
+# Shared pre-commit. Source: JakobMelchard/.githooks
+# Dispatches on staged file type; every tool is optional and skipped when absent.
+# Bypass with --no-verify.
+#
+# bash 3.2 compatible (macOS ships 3.2) — no mapfile, no associative arrays.
+set -eo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+staged() { git diff --cached --name-only --diff-filter=ACM -- "$@"; }
+have()   { command -v "$1" >/dev/null 2>&1; }
+fail()   { echo "pre-commit: $*" >&2; exit 1; }
+
+# ── secrets ──────────────────────────────────────────────────────────
+if have gitleaks; then
+  gitleaks git --pre-commit --staged --no-banner --redact \
+    || fail "gitleaks found staged secrets (--no-verify to override)"
+fi
+
+# ── go ───────────────────────────────────────────────────────────────
+GO=$(staged '*.go')
+if [ -n "$GO" ] && have gofmt; then
+  BAD=$(echo "$GO" | tr '\n' '\0' | xargs -0 gofmt -l)
+  if [ -n "$BAD" ]; then
+    echo "$BAD" | tr '\n' '\0' | xargs -0 gofmt -w
+    echo "$BAD" | tr '\n' '\0' | xargs -0 git add
+    echo "pre-commit: gofmt rewrote and re-staged:"; echo "$BAD" | sed 's/^/  /'
+  fi
+fi
+
+# ── python ───────────────────────────────────────────────────────────
+PY=$(staged '*.py')
+if [ -n "$PY" ]; then
+  # here-string, not a pipe: a pipe would run the loop in a subshell and
+  # `fail` could not abort the commit.
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    python3 -m py_compile "$f" || fail "syntax error in $f"
+  done <<< "$PY"
+  if have ruff; then
+    echo "$PY" | tr '\n' '\0' | xargs -0 ruff check || fail "ruff found issues"
+  fi
+fi
+
+# ── shell (extensionless scripts included — detect by shebang) ───────
+# `if` (not `&&`) so the last iteration's non-match does not make the
+# command substitution exit non-zero under `set -e`.
+SH=$(staged | while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  if head -1 "$f" | grep -qE '^#!.*(bash|sh|zsh)'; then echo "$f"; fi
+done)
+if [ -n "$SH" ]; then
+  while IFS= read -r f; do
+    if head -1 "$f" | grep -q zsh; then
+      zsh -n "$f" || fail "syntax error in $f"
+    else
+      bash -n "$f" || fail "syntax error in $f"
+      if have shellcheck; then
+        shellcheck --severity=warning "$f" || fail "shellcheck: $f"
+      fi
+    fi
+  done <<< "$SH"
+fi
+
+# ── web: prettier formats, eslint gates ──────────────────────────────
+if [ -f package.json ]; then
+  WEB=$(staged '*.js' '*.mjs' '*.css' '*.html' '*.json' '*.md' '*.yaml' '*.yml')
+  if [ -n "$WEB" ] && npx --no-install prettier --version >/dev/null 2>&1; then
+    echo "$WEB" | tr '\n' '\0' | xargs -0 npx --no-install prettier --write >/dev/null
+    echo "$WEB" | tr '\n' '\0' | xargs -0 git add
+  fi
+  JS=$(staged '*.js' '*.mjs')
+  if [ -n "$JS" ] && npx --no-install eslint --version >/dev/null 2>&1; then
+    echo "$JS" | tr '\n' '\0' | xargs -0 npx --no-install eslint --quiet \
+      || fail "eslint errors — fix and re-stage"
+  fi
+fi
+
+# ── terraform ────────────────────────────────────────────────────────
+TF=$(staged '*.tf')
+if [ -n "$TF" ] && have terraform; then
+  echo "$TF" | tr '\n' '\0' | xargs -0 terraform fmt -write=true >/dev/null
+  echo "$TF" | tr '\n' '\0' | xargs -0 git add
+fi
+
+# ── repo-specific extension ──────────────────────────────────────────
+# Anything this repo needs beyond the shared checks goes in
+# .githooks/pre-commit.local — keeps the shared hook updatable.
+if [ -x ".githooks/pre-commit.local" ]; then
+  .githooks/pre-commit.local || fail "pre-commit.local failed"
+fi
+
+exit 0
