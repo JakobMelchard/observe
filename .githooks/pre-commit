@@ -11,7 +11,12 @@ set -eo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
+# symlinks are excluded: prettier refuses them, and the target is checked on its own
+staged() {
+  git diff --cached --name-only --diff-filter=ACMR -- "$@" | while IFS= read -r f; do
+    [ -L "$f" ] || printf '%s\n' "$f"
+  done
+}
 have()   { command -v "$1" >/dev/null 2>&1; }
 fail()   { echo "pre-commit: $*" >&2; exit 1; }
 
