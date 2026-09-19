@@ -11,9 +11,9 @@ Applies in every org repo. A repo's own `AGENTS.md` adds to this; it does not ov
 - Verify before asserting: read the file, run the check.
 - Concise output. No filler, no em dashes, no emoji.
 
-## Platform (see PLATFORM.md)
+## Platform (map: `JakobMelchard/.agents/PLATFORM.md`)
 
-- CI: call a reusable workflow from `JakobMelchard/.github`. Never hand-roll a pipeline.
+- CI: new pipelines call a reusable workflow from `JakobMelchard/.github`; a hand-rolled one you touch gets migrated in the same change.
 - Hooks: vendored from `JakobMelchard/.githooks` via `hooks-install`. Never edit a vendored copy; repo checks go in `.githooks/<hook>.local`.
 - Lint/format config: vendored from `JakobMelchard/.config` via `config-sync`. Extend, do not fork.
 - Dev environment: a template from `JakobMelchard/.devcontainer`.
@@ -35,4 +35,4 @@ Applies in every org repo. A repo's own `AGENTS.md` adds to this; it does not ov
 
 - Commits: `conventional-commits` skill. `type(scope): subject`, imperative, lowercase, ≤72 chars.
 - PRs: `pr` skill. Draft first; ready only when checks are green.
-- `make` is the per-repo entrypoint. Read the Makefile before inventing commands.
+- Where a `Makefile` exists it is the entrypoint; read it before inventing commands. Otherwise the repo's own `AGENTS.md`/README names the commands.

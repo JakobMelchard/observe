@@ -47,7 +47,9 @@ Collect direct dependents and affected tests. Skip entities with no dependents.
 
 ### 3. Build PR body
 
-```
+Write it to a file (it contains fences and backticks; never pass it inline to `--body`):
+
+````
 <one sentence. what does this PR do?>
 
 <optional: one more sentence if the change is fragmented across concerns>
@@ -81,7 +83,7 @@ Collect direct dependents and affected tests. Skip entities with no dependents.
 ## Tasks
 
 - [ ] <manual intervention task>
-```
+````
 
 Structure:
 - First line: single sentence summarizing the full change
@@ -102,10 +104,7 @@ use `.agents/templates/pr-template.md` or `.github/pull_request_template.md` if 
 ### 4. Create PR
 
 ```sh
-gh pr create \
-  --draft \
-  --title "<title>" \
-  --body "<body from step 3>"
+gh pr create --draft --title "<title>" --body-file /tmp/pr-body.md
 ```
 
 ### Before creating
@@ -113,11 +112,14 @@ gh pr create \
 Check whether a PR already exists for the current branch:
 
 ```sh
-gh pr view --json url,state 2>/dev/null
+if gh pr view --json url,state >/tmp/pr.json 2>/dev/null; then
+  jq -r .state /tmp/pr.json          # OPEN | CLOSED | MERGED
+else
+  echo none                          # exit 1 = no PR for this branch → create
+fi
 ```
 
-If open: skip creation, proceed to the checks loop.
-If closed/merged: warn the user before proceeding.
+`none`: create. `OPEN`: skip creation, proceed to the checks loop. `CLOSED`/`MERGED`: warn the user before proceeding.
 
 ## Checks loop
 
@@ -126,8 +128,10 @@ Run after creation and after every push. Repeat until all required checks have `
 ### 1. Fetch check status
 
 ```sh
-gh pr checks --json name,state,bucket,link
+gh pr checks --required --json name,state,bucket,link
 ```
+
+`--required` limits the loop to checks that gate the merge; drop it to see advisory ones.
 
 `bucket` values: `pass`, `fail`, `pending`, `skipping`, `cancel`.
 
@@ -135,10 +139,13 @@ Treat `cancel` as `pending` on first occurrence (transient), as `fail` on recurr
 
 ### 2. Read PR comments
 
-Fetch comments each iteration to catch reviewer feedback before fixing:
+Fetch all three comment channels each iteration — issue comments, review bodies, and inline review comments — so reviewer requests are not missed:
 
 ```sh
-gh pr view --json comments --jq '.comments[] | {author: .author.login, body: .body, createdAt: .createdAt}'
+n=$(gh pr view --json number -q .number); r=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api "repos/$r/issues/$n/comments" --jq '.[] | {author: .user.login, body}'
+gh api "repos/$r/pulls/$n/reviews"   --jq '.[] | select(.body != "") | {author: .user.login, state, body}'
+gh api "repos/$r/pulls/$n/comments"  --jq '.[] | {author: .user.login, path, line, body}'
 ```
 
 Address explicit reviewer requests in the same fix pass when possible.
@@ -148,8 +155,9 @@ Address explicit reviewer requests in the same fix pass when possible.
 For each check with `bucket == "fail"`:
 
 ```sh
-# extract run ID from the link field (last path segment)
-gh run view <run-id> --log-failed
+# the link is .../actions/runs/<run-id>/job/<job-id>; take the segment after /runs/, not the last one
+run_id=$(printf '%s' "$link" | sed -nE 's|.*/actions/runs/([0-9]+).*|\1|p')
+gh run view "$run_id" --log-failed
 ```
 
 Read the log, identify root cause, make the minimal fix.
@@ -169,9 +177,11 @@ ruff check --fix .
 Apply the **conventional-commits** skill. Keep the fix commit minimal and scoped to what broke.
 
 ```sh
-git add -A
+git add <only the files the fix touched>
 git commit -m "fix(scope): address <check-name> failure"
 ```
+
+Never `git add -A` here: the worktree may hold unrelated or ephemeral files.
 
 Summarize the fix using sem before pushing:
 
@@ -182,7 +192,8 @@ sem diff --format json   # entity-level summary of what the fix changed
 Post a comment with the entity-level summary:
 
 ```sh
-gh pr comment --body "Fixed <check-name>: <entityType> \`<entityName>\` in <file>"
+printf 'Fixed %s: %s `%s` in %s\n' "<check-name>" "<entityType>" "<entityName>" "<file>" > /tmp/pr-comment.md
+gh pr comment --body-file /tmp/pr-comment.md
 ```
 
 Then push:
@@ -194,9 +205,8 @@ git push
 ### 5. Wait for checks to refresh
 
 ```sh
-# poll with timeout; exit code 8 means pending
-timeout 300s gh pr checks --watch --interval 15 \
-  || true   # don't abort on pending/timeout
+# gh polls itself; no coreutils `timeout` (macOS does not ship it). Exit code 8 = still pending.
+gh pr checks --required --watch --interval 15 || true
 ```
 
 Then re-fetch status from step 1.
@@ -215,7 +225,7 @@ Then re-fetch status from step 1.
 Rebuild the body from sem to reflect accumulated fixes. Run the same steps as Create (sem diff + sem impact) and replace the body:
 
 ```sh
-gh pr edit --body "<rebuilt body from sem diff + sem impact>"
+gh pr edit --body-file /tmp/pr-body.md   # rebuilt from sem diff + sem impact
 ```
 
 ## After the loop

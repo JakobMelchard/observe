@@ -16,6 +16,8 @@ Multi-step → plan as `step → verify`.
 # 1. write test: invalid input → raises error
 # 2. implement validate()
 # 3. test passes
+import pytest
+
 def test_validate_invalid():
     with pytest.raises(ValueError):
         validate("")

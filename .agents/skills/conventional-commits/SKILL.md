@@ -55,5 +55,5 @@ refactor: split project helpers across tools
 
 - ctx: add native nvim session attach
 - proj: share project-root discovery
-- zshrc: drop atach wrapper path
+- zshrc: drop attach wrapper path
 ```
