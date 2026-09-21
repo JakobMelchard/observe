@@ -1,6 +1,7 @@
 """Unit tests for the transport-agnostic core shared by every middleware."""
 
 import json
+import threading
 
 import pytest
 
@@ -12,6 +13,7 @@ from observe.core import JAVASCRIPT, JSON, ObserveCore
 @pytest.fixture(autouse=True)
 def reset_router():
     router._sinks.clear()
+    router.background = False
     yield
 
 
@@ -239,3 +241,54 @@ class TestFeedbackShim:
     def test_does_not_use_a_browser_prompt(self):
         """A prompt cannot collect a category, and blocks the page."""
         assert "prompt(" not in ObserveCore(ObserveConfig()).shim("observe.js").decode()
+
+
+class TestDelivery:
+    """A submission must not wait on whatever the sinks go and do."""
+
+    def test_the_request_does_not_wait_for_a_slow_sink(self):
+        import time
+
+        started = threading.Event()
+
+        class Slow:
+            def push_error(self, event): ...
+
+            def push_feedback(self, event):
+                started.set()
+                time.sleep(2)
+
+        router.background = True
+        router.register(Slow())
+        core = ObserveCore(ObserveConfig())
+        route = core.route("/__observe__/feedback", "POST")
+        assert route is not None
+
+        begin = time.monotonic()
+        core.reply(route, b'{"message": "hi"}', JSON)
+        assert time.monotonic() - begin < 0.5
+        assert started.wait(1)
+        router.drain()
+
+    def test_one_failing_sink_does_not_stop_the_others(self):
+        seen = []
+
+        class Broken:
+            def push_error(self, event): ...
+
+            def push_feedback(self, event):
+                raise RuntimeError("no")
+
+        class Fine:
+            def push_error(self, event): ...
+
+            def push_feedback(self, event):
+                seen.append(event.message)
+
+        router.register(Broken())
+        router.register(Fine())
+        core = ObserveCore(ObserveConfig())
+        route = core.route("/__observe__/feedback", "POST")
+        assert route is not None
+        core.reply(route, b'{"message": "hi"}', JSON)
+        assert seen == ["hi"]

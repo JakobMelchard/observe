@@ -24,6 +24,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 @pytest.fixture(autouse=True)
 def reset_router():
     router._sinks.clear()
+    router.background = False
     yield
 
 

@@ -14,6 +14,7 @@ from tests.fixture import app as fixture_app
 @pytest.fixture(autouse=True)
 def reset_router():
     router._sinks.clear()
+    router.background = False
     yield
 
 
