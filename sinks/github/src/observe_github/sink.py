@@ -47,6 +47,11 @@ def format_logs(entries: list[Any]) -> str:
 class GitHubSink:
     """Observe sink that opens a GitHub issue per feedback event.
 
+    Credentials come from the environment unless passed. A GitHub App is
+    preferred over a personal token: it is scoped to the repositories it is
+    installed on and belongs to no one's account. Set ``GITHUB_APP_ID`` and
+    ``GITHUB_APP_PRIVATE_KEY`` (needs the ``app`` extra), or ``GITHUB_TOKEN``.
+
     Args:
         token: GitHub token.  Defaults to ``GITHUB_TOKEN``.
         repo: ``owner/name`` slug.  Defaults to the origin remote of ``cwd``.
@@ -61,20 +66,47 @@ class GitHubSink:
         enrich: EnrichFn | None = None,
         cwd: Path | None = None,
     ) -> None:
-        self._token = token or os.environ.get("GITHUB_TOKEN", "")
+        self._static_token = token or os.environ.get("GITHUB_TOKEN", "")
         self._repo = repo or gh_repo(cwd)
         self._enrich = enrich
         self._cwd = cwd
+        self._app = self._app_auth() if not self._static_token else None
+
+    def _app_auth(self) -> Any | None:
+        """Build App authentication if it is configured and installable."""
+        app_id = os.environ.get("GITHUB_APP_ID", "")
+        private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
+        if not (app_id and private_key and self._repo):
+            return None
+        try:
+            from observe_github.app import AppAuth
+        except ImportError:
+            log.error("GitHubSink: App credentials set but `observe-github[app]` is not installed")
+            return None
+        return AppAuth(app_id, private_key, self._repo)
+
+    @property
+    def _token(self) -> str:
+        """The bearer token for this request, minted per installation if needed."""
+        if self._static_token:
+            return self._static_token
+        if self._app is None:
+            return ""
+        try:
+            return str(self._app.token())
+        except Exception:
+            log.exception("GitHubSink: could not mint an installation token")
+            return ""
 
     def push_error(self, event: ErrorEvent) -> None:
         """Errors do not open issues — only feedback does."""
 
     def push_feedback(self, event: FeedbackEvent) -> None:
-        if not self._token:
-            log.warning("GitHubSink: GITHUB_TOKEN not set, skipping")
-            return
         if not self._repo:
             log.warning("GitHubSink: could not determine repo, skipping")
+            return
+        if not self._token:
+            log.warning("GitHubSink: no GitHub App or token configured, skipping")
             return
 
         enrichment = self._enriched(event)

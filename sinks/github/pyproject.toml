@@ -13,8 +13,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Signing a GitHub App JWT needs RSA, which the standard library has not got.
+# Only installs that authenticate as an App pay for it.
+app = [
+    "cryptography>=42",
+]
 dev = [
     "pytest>=8",
+    "cryptography>=42",
 ]
 
 [tool.setuptools.packages.find]

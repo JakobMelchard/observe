@@ -32,6 +32,21 @@ router.register(GitHubSink(enrich=my_enricher))
 `enrich` is any `FeedbackEvent -> {"label", "title", "description"} | None`. The
 sink never knows what produced it — an LLM, a heuristic, or nothing at all.
 
+It authenticates as a **GitHub App** when one is configured, which is what a
+service opening issues on its own should use: scoped to the repositories the
+App is installed on, tied to no one's account, revocable on its own.
+
+```sh
+pip install 'observe-github[app]'     # RSA signing; the base install has no deps
+export GITHUB_APP_ID=123456
+export GITHUB_APP_PRIVATE_KEY="$(cat app.private-key.pem)"
+```
+
+The PEM survives being flattened to `\n` escapes or base64-wrapped, which is
+what secret stores tend to do to it. Installation tokens are minted on demand
+and reused until shortly before they expire. `GITHUB_TOKEN` still works and
+takes precedence if set.
+
 Configure via `observe.toml`:
 
 ```toml
