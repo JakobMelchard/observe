@@ -222,3 +222,20 @@ class TestServiceWorkerScope:
         route = core.route("/__observe__/observe.js", "GET")
         assert route is not None
         assert core.reply(route).headers == ()
+
+
+class TestFeedbackShim:
+    """The form has to send what a router needs to route on."""
+
+    def test_asks_for_a_category_and_a_name(self):
+        shim = ObserveCore(ObserveConfig()).shim("observe.js").decode()
+        assert "category: category.value" in shim
+        assert "name: who" in shim
+
+    def test_carries_the_user_block_the_server_already_parses(self):
+        shim = ObserveCore(ObserveConfig()).shim("observe.js").decode()
+        assert "user: user || {}" in shim
+
+    def test_does_not_use_a_browser_prompt(self):
+        """A prompt cannot collect a category, and blocks the page."""
+        assert "prompt(" not in ObserveCore(ObserveConfig()).shim("observe.js").decode()
