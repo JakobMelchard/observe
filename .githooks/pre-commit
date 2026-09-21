@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# VENDORED from JakobMelchard/.githooks/pre-commit@main — do not edit.
+# Refresh: hooks-install  (JakobMelchard/bin), or see JakobMelchard/.githooks/install.
+# Repo-specific checks belong in .githooks/pre-commit.local (executable).
+# Shared pre-commit. Source: JakobMelchard/.githooks
+# Dispatches on staged file type; every tool is optional and skipped when absent.
+# Bypass with --no-verify.
+#
+# bash 3.2 compatible (macOS ships 3.2) — no mapfile, no associative arrays.
+set -eo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# symlinks are excluded: prettier refuses them, and the target is checked on its own
+staged() {
+  git diff --cached --name-only --diff-filter=ACMR -- "$@" | while IFS= read -r f; do
+    [ -L "$f" ] || printf '%s\n' "$f"
+  done
+}
+have()   { command -v "$1" >/dev/null 2>&1; }
+fail()   { echo "pre-commit: $*" >&2; exit 1; }
+
+# Files that are staged AND have further unstaged edits. For those the
+# worktree copy is not what gets committed, so formatters must not rewrite
+# and re-stage them (that would sweep the unstaged edits in), and syntax
+# checks read the index blob instead of the file.
+# shellcheck disable=SC2046 # one path per line by construction
+MIXED=$(git diff --name-only -- $(staged) 2>/dev/null || true)
+mixed() { case "
+$MIXED
+" in *"
+$1
+"*) return 0 ;; *) return 1 ;; esac; }
+blob()  { git show ":$1"; }
+
+# ── secrets ──────────────────────────────────────────────────────────
+if have gitleaks; then
+  gitleaks git --pre-commit --staged --no-banner --redact \
+    || fail "gitleaks found staged secrets (--no-verify to override)"
+fi
+
+# ── go ───────────────────────────────────────────────────────────────
+GO=$(staged '*.go')
+if [ -n "$GO" ] && have gofmt; then
+  BAD=""
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    if mixed "$f"; then
+      blob "$f" | gofmt -l >/dev/null 2>&1 && { blob "$f" | gofmt -l 2>/dev/null | grep -q . && fail "$f needs gofmt but has unstaged edits — format it and re-stage"; }
+    elif [ -n "$(gofmt -l "$f")" ]; then
+      BAD="$BAD$f
+"
+    fi
+  done <<< "$GO"
+  if [ -n "$BAD" ]; then
+    printf '%s' "$BAD" | tr '\n' '\0' | xargs -0 gofmt -w
+    printf '%s' "$BAD" | tr '\n' '\0' | xargs -0 git add
+    echo "pre-commit: gofmt rewrote and re-staged:"; printf '%s' "$BAD" | sed 's/^/  /'
+  fi
+fi
+
+# ── python ───────────────────────────────────────────────────────────
+PY=$(staged '*.py')
+if [ -n "$PY" ] && have python3; then
+  # here-string, not a pipe: a pipe would run the loop in a subshell and
+  # `fail` could not abort the commit. ast.parse, not py_compile: no __pycache__.
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    if mixed "$f"; then src=$(blob "$f"); else src=$(cat "$f"); fi
+    printf '%s' "$src" | python3 -c 'import ast,sys; ast.parse(sys.stdin.read(), sys.argv[1])' "$f" || fail "syntax error in $f"
+  done <<< "$PY"
+  if have ruff; then
+    echo "$PY" | tr '\n' '\0' | xargs -0 ruff check || fail "ruff found issues"
+  fi
+fi
+
+# ── shell (extensionless scripts included — detect by shebang) ───────
+# `if` (not `&&`) so the last iteration's non-match does not make the
+# command substitution exit non-zero under `set -e`.
+interp() { head -1 "$1" | sed -nE 's#^\#![^ ]*/(env +)?(bash|sh|zsh)([[:space:]].*)?$#\2#p'; }
+SH=$(staged | while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  if [ -n "$(interp "$f")" ]; then echo "$f"; fi
+done)
+if [ -n "$SH" ]; then
+  while IFS= read -r f; do
+    i=$(interp "$f")
+    if mixed "$f"; then src=$(blob "$f"); else src=$(cat "$f"); fi
+    case "$i" in
+      zsh)  have zsh || continue
+            printf '%s\n' "$src" | zsh -n || fail "syntax error in $f" ;;
+      sh)   printf '%s\n' "$src" | sh -n || fail "syntax error in $f"
+            if have shellcheck; then printf '%s\n' "$src" | shellcheck --severity=warning -s sh - || fail "shellcheck: $f"; fi ;;
+      bash) printf '%s\n' "$src" | bash -n || fail "syntax error in $f"
+            if have shellcheck; then printf '%s\n' "$src" | shellcheck --severity=warning -s bash - || fail "shellcheck: $f"; fi ;;
+    esac
+  done <<< "$SH"
+fi
+
+# ── web: prettier formats, eslint gates ──────────────────────────────
+if [ -f package.json ]; then
+  WEB=$(staged '*.js' '*.mjs' '*.css' '*.html' '*.json' '*.md' '*.yaml' '*.yml')
+  if [ -n "$WEB" ] && npx --no-install prettier --version >/dev/null 2>&1; then
+    CLEAN=""
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      if mixed "$f"; then
+        blob "$f" | npx --no-install prettier --stdin-filepath "$f" | cmp -s - <(blob "$f") \
+          || fail "$f needs prettier but has unstaged edits — format it and re-stage"
+      else
+        CLEAN="$CLEAN$f
+"
+      fi
+    done <<< "$WEB"
+    if [ -n "$CLEAN" ]; then
+      printf '%s' "$CLEAN" | tr '\n' '\0' | xargs -0 npx --no-install prettier --write >/dev/null
+      printf '%s' "$CLEAN" | tr '\n' '\0' | xargs -0 git add
+    fi
+  fi
+  JS=$(staged '*.js' '*.mjs')
+  if [ -n "$JS" ] && npx --no-install eslint --version >/dev/null 2>&1; then
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      if mixed "$f"; then
+        blob "$f" | npx --no-install eslint --quiet --stdin --stdin-filename "$f" || fail "eslint errors in $f (staged content) — fix and re-stage"
+      else
+        npx --no-install eslint --quiet "$f" || fail "eslint errors — fix and re-stage"
+      fi
+    done <<< "$JS"
+  fi
+fi
+
+# ── terraform ────────────────────────────────────────────────────────
+TF=$(staged '*.tf')
+if [ -n "$TF" ] && have terraform; then
+  CLEAN=""
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    if mixed "$f"; then
+      blob "$f" | terraform fmt - | cmp -s - <(blob "$f") || fail "$f needs terraform fmt but has unstaged edits — format it and re-stage"
+    else
+      CLEAN="$CLEAN$f
+"
+    fi
+  done <<< "$TF"
+  if [ -n "$CLEAN" ]; then
+    printf '%s' "$CLEAN" | tr '\n' '\0' | xargs -0 terraform fmt -write=true >/dev/null
+    printf '%s' "$CLEAN" | tr '\n' '\0' | xargs -0 git add
+  fi
+fi
+
+# ── repo-specific extension ──────────────────────────────────────────
+# Anything this repo needs beyond the shared checks goes in
+# .githooks/pre-commit.local — keeps the shared hook updatable.
+if [ -x ".githooks/pre-commit.local" ]; then
+  .githooks/pre-commit.local || fail "pre-commit.local failed"
+fi
+
+exit 0
