@@ -37,6 +37,8 @@ class AppAuth:
     """Mints and caches installation tokens for one repository."""
 
     def __init__(self, app_id: str, private_key: str, repo: str) -> None:
+        """``app_id`` may be the App ID or the Client ID; GitHub accepts either
+        as the JWT issuer, and only the Client ID is handed out by newer Apps."""
         self.app_id = app_id
         self.private_key = _normalize(private_key)
         self.repo = repo

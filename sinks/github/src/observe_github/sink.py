@@ -50,13 +50,17 @@ class GitHubSink:
     Credentials come from the environment unless passed. A GitHub App is
     preferred over a personal token: it is scoped to the repositories it is
     installed on and belongs to no one's account. Set ``GITHUB_APP_ID`` and
-    ``GITHUB_APP_PRIVATE_KEY`` (needs the ``app`` extra), or ``GITHUB_TOKEN``.
+    ``GITHUB_APP_PRIVATE_KEY`` (needs the ``app`` extra), or ``GITHUB_TOKEN``
+    — or pass them, which is what a deployment whose secrets are named after
+    its own bot will want.
 
     Args:
         token: GitHub token.  Defaults to ``GITHUB_TOKEN``.
         repo: ``owner/name`` slug.  Defaults to the origin remote of ``cwd``.
         enrich: Optional callable returning ``label``, ``title``, ``description``.
         cwd: Repository used for the remote slug and code context.
+        app_id: App ID or Client ID.  Defaults to ``GITHUB_APP_ID``.
+        private_key: App private key, PEM.  Defaults to ``GITHUB_APP_PRIVATE_KEY``.
     """
 
     def __init__(
@@ -65,17 +69,21 @@ class GitHubSink:
         repo: str | None = None,
         enrich: EnrichFn | None = None,
         cwd: Path | None = None,
+        app_id: str | None = None,
+        private_key: str | None = None,
     ) -> None:
         self._static_token = token or os.environ.get("GITHUB_TOKEN", "")
         self._repo = repo or gh_repo(cwd)
         self._enrich = enrich
         self._cwd = cwd
-        self._app = self._app_auth() if not self._static_token else None
+        self._app = (
+            None if self._static_token else self._app_auth(app_id or "", private_key or "")
+        )
 
-    def _app_auth(self) -> Any | None:
+    def _app_auth(self, app_id: str, private_key: str) -> Any | None:
         """Build App authentication if it is configured and installable."""
-        app_id = os.environ.get("GITHUB_APP_ID", "")
-        private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
+        app_id = app_id or os.environ.get("GITHUB_APP_ID", "")
+        private_key = private_key or os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
         if not (app_id and private_key and self._repo):
             return None
         try:
