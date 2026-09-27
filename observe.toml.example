@@ -1,6 +1,3 @@
-[observe]
-profile = "relay"
-
 [collector]
 endpoint = "/__observe__/otlp"
 
@@ -8,6 +5,3 @@ endpoint = "/__observe__/otlp"
 feedback_label = "Feedback"
 enrich_hook = "__observe_enrich__"
 register_sw = true
-
-[otelcol]
-config_out = "./otelcol.yaml"
