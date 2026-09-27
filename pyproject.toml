@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "observe"
 version = "0.1.0"
-description = "Deployment-agnostic observability sidecar"
+description = "Deployment-agnostic in-process observability middleware"
 requires-python = ">=3.11"
 dependencies = []
 
