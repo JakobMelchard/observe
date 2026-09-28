@@ -1,0 +1,17 @@
+# Hooks come from pinned repos; Renovate bumps the revs. CI runs the same config through
+# JakobMelchard/.github hooks.yml. Setup: brew install prek && prek install
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+  - repo: https://github.com/JakobMelchard/.githooks
+    rev: v1.0.0
+    hooks:
+      - id: conventional-commit
