@@ -130,6 +130,30 @@ if [ -f package.json ]; then
   fi
 fi
 
+# ── swift: swift-format rewrites and re-stages (Xcode ships it; a brew one wins) ──
+SW=$(staged '*.swift')
+if [ -n "$SW" ]; then
+  SWIFT_FORMAT=$(command -v swift-format 2>/dev/null || xcrun --find swift-format 2>/dev/null || true)
+  if [ -n "$SWIFT_FORMAT" ]; then
+    BAD=""
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      if mixed "$f"; then
+        blob "$f" | "$SWIFT_FORMAT" lint --strict >/dev/null 2>&1 \
+          || fail "$f needs swift-format but has unstaged edits — format it and re-stage"
+      elif ! "$SWIFT_FORMAT" lint --strict "$f" >/dev/null 2>&1; then
+        BAD="$BAD$f
+"
+      fi
+    done <<< "$SW"
+    if [ -n "$BAD" ]; then
+      printf '%s' "$BAD" | tr '\n' '\0' | xargs -0 "$SWIFT_FORMAT" format --in-place
+      printf '%s' "$BAD" | tr '\n' '\0' | xargs -0 git add
+      echo "pre-commit: swift-format rewrote and re-staged:"; printf '%s' "$BAD" | sed 's/^/  /'
+    fi
+  fi
+fi
+
 # ── terraform ────────────────────────────────────────────────────────
 TF=$(staged '*.tf')
 if [ -n "$TF" ] && have terraform; then

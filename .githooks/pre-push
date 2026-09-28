@@ -20,6 +20,15 @@ if [ -d terraform ] && have terraform; then
     || { echo "pre-push: terraform fmt -check failed" >&2; exit 1; }
 fi
 
+if [ -f Package.swift ] && have swift; then
+  swift build || fail "swift build failed"
+fi
+
+# An XcodeGen spec that no longer generates is broken for everyone who clones.
+if [ -f project.yml ] && have xcodegen; then
+  xcodegen generate --quiet || fail "xcodegen generate failed"
+fi
+
 # ── repo-specific extension ──────────────────────────────────────────
 # Anything this repo needs beyond the shared checks goes in
 # .githooks/pre-push.local — keeps the shared hook updatable.
