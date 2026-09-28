@@ -1,11 +1,23 @@
 # observe
 
-Deployment-agnostic observability sidecar. Instrument Python/Go/JS apps with zero config — injects error tracking, user feedback, and OTLP telemetry via middleware.
+Deployment-agnostic observability middleware that runs in-process. Instrument Python/Go/JS apps with zero config: it injects error tracking, user feedback, and OTLP telemetry into the app it wraps.
 
 ## Quickstart
 
+Not on PyPI. Install from git:
+
 ```sh
-pip install observe
+pip install 'observe @ git+https://github.com/JakobMelchard/observe.git'
+```
+
+Install it before any sink: sinks depend on `observe` by name, and pip would
+otherwise resolve that name on PyPI. With uv, pin both in the consuming
+project's `pyproject.toml`, as `interviews` does:
+
+```toml
+[tool.uv.sources]
+observe = { git = "https://github.com/JakobMelchard/observe.git" }
+observe-github = { git = "https://github.com/JakobMelchard/observe.git", subdirectory = "sinks/github" }
 ```
 
 Wrap your app:
@@ -47,7 +59,7 @@ service opening issues on its own should use: scoped to the repositories the
 App is installed on, tied to no one's account, revocable on its own.
 
 ```sh
-pip install 'observe-github[app]'     # RSA signing; the base install has no deps
+pip install 'observe-github[app] @ git+https://github.com/JakobMelchard/observe.git#subdirectory=sinks/github'  # [app] adds RSA signing; the base install has no deps
 export GITHUB_APP_ID=123456
 export GITHUB_APP_PRIVATE_KEY="$(cat app.private-key.pem)"
 ```
@@ -60,9 +72,6 @@ takes precedence if set.
 Configure via `observe.toml`:
 
 ```toml
-[observe]
-profile = "relay"
-
 [collector]
 endpoint = "/__observe__/otlp"
 
@@ -92,9 +101,6 @@ Browser/Client                 App Server                    Sinks
 which paths belong to observe, what each replies, which responses get the shim
 injected, and how OTLP payloads reach the router. Each middleware is a thin
 adapter over it that only reads bodies and emits responses.
-
-**Profiles:** `relay` (forward immediately), `buffer` (queue in memory, flush on
-condition), `full` (local processing + forwarding).
 
 ## Structure
 

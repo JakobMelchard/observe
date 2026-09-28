@@ -1,6 +1,6 @@
-# observe — Observability sidecar
+# observe: in-process observability middleware
 
-Python library for instrumenting apps with error tracking and user feedback. Pluggable sinks, multiple deployment profiles.
+Python library for instrumenting apps with error tracking and user feedback. Middleware wraps the app in the same process; pluggable sinks.
 
 ## Structure
 
@@ -26,7 +26,9 @@ observe/
 │   ├── unit/test_core.py      # ObserveCore contract
 │   ├── unit/test_adapters.py  # ASGI + http.server adapters
 │   ├── unit/test_middleware.py# WSGI adapter
+│   ├── unit/test_github_app.py# GitHub App auth
 │   ├── e2e/test_sentry.py     # Sink event shapes
+│   ├── e2e/test_github.py     # GitHub issue sink
 │   └── fixture/
 └── pyproject.toml
 ```

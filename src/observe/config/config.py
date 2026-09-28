@@ -1,31 +1,24 @@
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
-
-Profile = Literal["full", "relay", "buffer"]
 
 CANDIDATES = ("observe.toml", "pyproject.toml")
 
 #: ``(toml section, key) -> ObserveConfig attribute``
 FIELDS = {
-    ("observe", "profile"): "profile",
     ("collector", "endpoint"): "endpoint",
     ("frontend", "feedback_label"): "feedback_label",
     ("frontend", "enrich_hook"): "enrich_hook",
     ("frontend", "register_sw"): "register_sw",
-    ("otelcol", "config_out"): "otelcol_config_out",
 }
 
 
 @dataclass
 class ObserveConfig:
-    profile: Profile = "relay"
     endpoint: str = "/__observe__/otlp"
     feedback_label: str = "Feedback"
     enrich_hook: str = "__observe_enrich__"
     register_sw: bool = True
-    otelcol_config_out: str | None = None
 
 
 def load_config(path: str | Path | None = None) -> ObserveConfig:
