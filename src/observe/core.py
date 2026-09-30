@@ -10,6 +10,7 @@ router.  Adapters own only body reading and response emission.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from importlib.resources import files
 
@@ -30,8 +31,9 @@ SHIMS = ("observe.js", "observe.sw.js")
 #: but has to see the whole origin to be of any use.
 SHIM_HEADERS = {"observe.sw.js": (("Service-Worker-Allowed", "/"),)}
 
-#: A full page announces itself in its opening bytes.
-DOCUMENT_MARKERS = (b"<!doctype html", b"<html", b"<head")
+#: A full page announces itself in its opening bytes. The tag name must end
+#: there, so `<header>` or a `<heading>` element is not mistaken for `<head>`.
+DOCUMENT_MARKERS = re.compile(rb"<(?:!doctype\s+html|html|head)[\s/>]")
 
 #: How far into a response to look for those markers.
 MARKER_WINDOW = 1024
@@ -172,8 +174,7 @@ class ObserveCore:
 
 def is_document(html: bytes) -> bool:
     """True when a response is a whole page rather than a fragment."""
-    head = html[:MARKER_WINDOW].lower()
-    return any(marker in head for marker in DOCUMENT_MARKERS)
+    return DOCUMENT_MARKERS.search(html[:MARKER_WINDOW].lower()) is not None
 
 
 def _loads(body: bytes) -> dict[str, object]:

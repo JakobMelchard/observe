@@ -158,6 +158,7 @@ def test_inject_prepends_when_a_document_has_no_head(core):
     [
         b"<p>bare</p>",
         b'<div id="queue"><table></table></div>',
+        b"<div><header>x</header></div>",
         b"",
     ],
 )
@@ -175,6 +176,13 @@ def test_fragments_are_never_injected(core, fragment):
         (b"\n  <!doctype html>", True),
         (b"<div>fragment</div>", False),
         (b"<p>x</p>" * 500 + b"<html>", False),
+        (b"<HEAD>", True),
+        (b"<head\n>", True),
+        (b"<head/>", True),
+        (b"<div><header>x</header></div>", False),
+        (b"<HEADER class='top'>x</HEADER>", False),
+        (b"<heading-title>x</heading-title>", False),
+        (b"<html-viewer></html-viewer>", False),
     ],
 )
 def test_is_document(body, expected):
