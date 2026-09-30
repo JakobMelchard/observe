@@ -157,14 +157,18 @@
       "border:1px solid " + line + ";border-radius:4px;background:" + bg + ";color:" + fg + ";" +
       "font:inherit;";
 
+    // The trigger hides until hovered. A touch screen cannot hover, so there it stays visible;
+    // a site with its own button (cfg.button === false) gets none and calls window.__observe__.open().
+    var hover = !(window.matchMedia && matchMedia("(hover: none)").matches);
+    var idle = hover ? "0" : "1";
     var btn = make("button", anchor +
-      "opacity:0;transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid " + line + ";" +
+      "opacity:" + idle + ";transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid " + line + ";" +
       "border-radius:4px;background:" + bg + ";color:" + fg + ";cursor:pointer;font-size:0.875rem;",
       { textContent: feedbackLabel, type: "button" });
     btn.onmouseenter = function () { btn.style.opacity = "1"; };
     btn.onfocus = function () { btn.style.opacity = "1"; };
     document.body.addEventListener("mouseleave", function () {
-      if (panel.style.display === "none") btn.style.opacity = "0";
+      if (panel.style.display === "none") btn.style.opacity = idle;
     });
 
     var panel = make("div", anchor +
@@ -213,7 +217,7 @@
     function close() {
       panel.style.display = "none";
       btn.style.display = "";
-      btn.style.opacity = "0";
+      btn.style.opacity = idle;
       message.value = "";
     }
 
@@ -243,7 +247,8 @@
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
     });
 
-    document.body.appendChild(btn);
+    if (cfg.button !== false) document.body.appendChild(btn);
     document.body.appendChild(panel);
+    window.__observe__ = { open: open, close: close };
   });
 })(window.__OBSERVE_CONFIG__);
