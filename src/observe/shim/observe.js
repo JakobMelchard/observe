@@ -1,6 +1,11 @@
 (function (cfg) {
   cfg = cfg || {};
   var endpoint = cfg.endpoint || "/__observe__/otlp";
+  // A static site has no middleware behind it: feedback can go to a remote receiver with a
+  // bearer token, and the OTLP spans can be switched off when nothing collects them.
+  var feedbackEndpoint = cfg.feedbackEndpoint || "/__observe__/feedback";
+  var token = cfg.token || "";
+  var traces = cfg.traces !== false;
   var feedbackLabel = cfg.feedbackLabel || "Feedback";
   var enrichHook = cfg.enrichHook || "__observe_enrich__";
   var registerSw = cfg.registerSw !== false;
@@ -14,7 +19,8 @@
   var _fetch = window.fetch;
   window.fetch = function () {
     var args = arguments;
-    if (!args[0] || (typeof args[0] === "string" && args[0].indexOf("/__observe__/") === 0)) {
+    var url = typeof args[0] === "string" ? args[0] : args[0] && args[0].url;
+    if (!url || url.indexOf("/__observe__/") === 0 || url === feedbackEndpoint) {
       return _fetch.apply(this, args);
     }
     var start = Date.now();
@@ -57,10 +63,13 @@
 
   // 4. feedback submission
   function submitFeedback(message, context, user) {
-    return _fetch("/__observe__/feedback", {
+    var headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = "Bearer " + token;
+    return _fetch(feedbackEndpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({
+        repo: cfg.repo,
         message: message,
         timestamp: new Date().toISOString(),
         context: Object.assign(enrich(), context || {}),
@@ -70,6 +79,7 @@
   }
 
   function tryToSendSpan(name, level, attrs) {
+    if (!traces) return;
     var enriched = Object.assign(enrich(), attrs || {});
     _fetch(endpoint + "/v1/traces", {
       method: "POST",
