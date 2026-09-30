@@ -1,6 +1,11 @@
 (function (cfg) {
   cfg = cfg || {};
   var endpoint = cfg.endpoint || "/__observe__/otlp";
+  // A static site has no middleware behind it: feedback can go to a remote receiver with a
+  // bearer token, and the OTLP spans can be switched off when nothing collects them.
+  var feedbackEndpoint = cfg.feedbackEndpoint || "/__observe__/feedback";
+  var token = cfg.token || "";
+  var traces = cfg.traces !== false;
   var feedbackLabel = cfg.feedbackLabel || "Feedback";
   var enrichHook = cfg.enrichHook || "__observe_enrich__";
   var registerSw = cfg.registerSw !== false;
@@ -14,14 +19,16 @@
   var _fetch = window.fetch;
   window.fetch = function () {
     var args = arguments;
-    if (!args[0] || (typeof args[0] === "string" && args[0].indexOf("/__observe__/") === 0)) {
+    // string, Request (.url) or URL (String() is its href)
+    var url = args[0] && args[0].url ? args[0].url : String(args[0] || "");
+    if (!url || url.indexOf("/__observe__/") === 0 || url === feedbackEndpoint) {
       return _fetch.apply(this, args);
     }
     var start = Date.now();
     return _fetch.apply(this, args).then(function (resp) {
       if (!resp.ok) {
         tryToSendSpan("fetch error", "warning", {
-          url: typeof args[0] === "string" ? args[0] : args[0].url,
+          url: url,
           status: resp.status,
           duration: Date.now() - start,
         });
@@ -29,7 +36,7 @@
       return resp;
     }).catch(function (err) {
       tryToSendSpan("fetch failed", "error", {
-        url: typeof args[0] === "string" ? args[0] : args[0].url,
+        url: url,
         error: err.message,
         duration: Date.now() - start,
       });
@@ -57,10 +64,13 @@
 
   // 4. feedback submission
   function submitFeedback(message, context, user) {
-    return _fetch("/__observe__/feedback", {
+    var headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = "Bearer " + token;
+    return _fetch(feedbackEndpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({
+        repo: cfg.repo,
         message: message,
         timestamp: new Date().toISOString(),
         context: Object.assign(enrich(), context || {}),
@@ -70,6 +80,7 @@
   }
 
   function tryToSendSpan(name, level, attrs) {
+    if (!traces) return;
     var enriched = Object.assign(enrich(), attrs || {});
     _fetch(endpoint + "/v1/traces", {
       method: "POST",
@@ -147,14 +158,18 @@
       "border:1px solid " + line + ";border-radius:4px;background:" + bg + ";color:" + fg + ";" +
       "font:inherit;";
 
+    // The trigger hides until hovered. A touch screen cannot hover, so there it stays visible;
+    // a site with its own button (cfg.button === false) gets none and calls window.__observe__.open().
+    var hover = !(window.matchMedia && matchMedia("(hover: none)").matches);
+    var idle = hover ? "0" : "1";
     var btn = make("button", anchor +
-      "opacity:0;transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid " + line + ";" +
+      "opacity:" + idle + ";transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid " + line + ";" +
       "border-radius:4px;background:" + bg + ";color:" + fg + ";cursor:pointer;font-size:0.875rem;",
       { textContent: feedbackLabel, type: "button" });
     btn.onmouseenter = function () { btn.style.opacity = "1"; };
     btn.onfocus = function () { btn.style.opacity = "1"; };
     document.body.addEventListener("mouseleave", function () {
-      if (panel.style.display === "none") btn.style.opacity = "0";
+      if (panel.style.display === "none") btn.style.opacity = idle;
     });
 
     var panel = make("div", anchor +
@@ -203,7 +218,7 @@
     function close() {
       panel.style.display = "none";
       btn.style.display = "";
-      btn.style.opacity = "0";
+      btn.style.opacity = idle;
       message.value = "";
     }
 
@@ -233,7 +248,8 @@
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
     });
 
-    document.body.appendChild(btn);
+    if (cfg.button !== false) document.body.appendChild(btn);
     document.body.appendChild(panel);
+    window.__observe__ = { open: open, close: close };
   });
 })(window.__OBSERVE_CONFIG__);

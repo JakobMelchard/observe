@@ -81,6 +81,23 @@ enrich_hook = "__observe_enrich__"
 register_sw = true
 ```
 
+On a static site there is no middleware to inject the shim, so include `observe.js` yourself and set
+`window.__OBSERVE_CONFIG__` before it loads. Two keys exist for that case: `feedbackEndpoint` (a
+remote receiver such as switchboard's `/in/feedback`, sent with `token` as a bearer) and `traces:
+false` when nothing collects the OTLP spans. `repo` is passed through in the feedback payload so the
+receiver knows where to file the issue. On a touch screen the floating trigger stays visible (it cannot
+be hovered); a site with its own button passes `button: false` and calls `window.__observe__.open()`.
+
+```html
+<script>
+  window.__OBSERVE_CONFIG__ = {
+    feedbackEndpoint: "https://switchboard.example.workers.dev/in/feedback",
+    token: "…", repo: "owner/name", traces: false, registerSw: false,
+  };
+</script>
+<script src="observe.js"></script>
+```
+
 ## Design
 
 In-process. No daemon, no separate process, no infrastructure dependency.
