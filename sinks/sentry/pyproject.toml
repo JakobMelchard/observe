@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "observe-sentry"
 version = "0.1.0"
 description = "Sentry sink for observe sidecar"
+license = "MIT"
 requires-python = ">=3.11"
 # The consumer picks where `observe` comes from via [tool.uv.sources].
 dependencies = [
