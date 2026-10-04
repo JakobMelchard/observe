@@ -7,6 +7,7 @@ coverage at all, which is how ``http_server`` drifted twice.
 import asyncio
 import json
 import threading
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -129,6 +130,27 @@ def test_asgi_otlp_reaches_router():
     assert sink.errors[0].message == "span"
 
 
+def test_asgi_streaming_response_is_not_buffered():
+    sent = []
+    seen_mid_stream = []
+
+    async def sse(scope, receive, send):
+        headers = [(b"content-type", b"text/event-stream")]
+        await send({"type": "http.response.start", "status": 200, "headers": headers})
+        await send({"type": "http.response.body", "body": b"data: 0\n\n", "more_body": True})
+        seen_mid_stream.extend(sent)
+        await send({"type": "http.response.body", "body": b"data: 1\n\n"})
+
+    async def send(msg):
+        sent.append(msg)
+
+    scope = {"type": "http", "path": "/events", "method": "GET", "headers": []}
+    asyncio.run(ObserveASGIMiddleware(sse, ObserveConfig())(scope, None, send))
+    assert [m["type"] for m in seen_mid_stream] == ["http.response.start", "http.response.body"]
+    assert seen_mid_stream[1]["body"] == b"data: 0\n\n"
+    assert len(sent) == 3
+
+
 def test_asgi_passes_through_non_http():
     app = ObserveASGIMiddleware(demo_app, ObserveConfig())
     seen = []
@@ -211,6 +233,36 @@ def test_http_server_feedback_reaches_router(http_url):
     )
     assert status == 200
     assert sink.feedback[0].message == "raw"
+
+
+def test_http_server_patches_get_only_handler():
+    class GetOnly(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(HTML)))
+            self.end_headers()
+            self.wfile.write(HTML)
+
+    patch_handler(GetOnly, ObserveConfig())
+    server = ThreadingHTTPServer(("127.0.0.1", 0), GetOnly)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}"
+    sink = Recorder()
+    router.register(sink)
+    try:
+        status, _, _ = fetch(f"{url}/__observe__/feedback", json.dumps({"message": "g"}).encode())
+        assert status == 200
+        assert sink.feedback[0].message == "g"
+        with pytest.raises(urllib.error.HTTPError) as err:
+            fetch(f"{url}/save", b"{}")
+        assert err.value.code == 501
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_http_server_otlp_ignores_query_string(http_url):

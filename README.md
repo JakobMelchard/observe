@@ -151,6 +151,8 @@ Every middleware serves the same five paths:
 
 Everything else is delegated to the wrapped app. 2xx `text/html` responses get
 the shim injected after `<head>`; binary extensions are skipped untouched.
+The WSGI and ASGI adapters buffer only those HTML responses. Everything else,
+streaming and server-sent events included, is passed through chunk by chunk.
 
 ## Runtime
 

@@ -38,31 +38,31 @@ class ObserveASGIMiddleware:
             await self.app(scope, receive, send)
             return
 
-        status = 200
-        headers: list[tuple[bytes, bytes]] = []
+        # Only a response that may be injected is held back; the rest streams.
+        held: Message | None = None
         buffer = bytearray()
 
         async def _intercept(msg: Message) -> None:
-            nonlocal status, headers
-            if msg["type"] == "http.response.start":
-                status = msg["status"]
-                headers = list(msg.get("headers", []))
-            elif msg["type"] == "http.response.body":
+            nonlocal held
+            if msg["type"] == "http.response.start" and self.core.should_inject(
+                msg["status"], _content_type(msg.get("headers", []))
+            ):
+                held = msg
+            elif held is not None and msg["type"] == "http.response.body":
                 buffer.extend(msg.get("body", b""))
                 if not msg.get("more_body", False):
-                    await self._flush(send, status, headers, bytes(buffer))
+                    start, held = held, None
+                    await self._flush(send, start, bytes(buffer))
+            else:
+                await send(msg)
 
         await self.app(scope, receive, _intercept)
 
-    async def _flush(
-        self, send: Send, status: int, headers: list[tuple[bytes, bytes]], body: bytes
-    ) -> None:
-        content_type = next((v.decode() for k, v in headers if k.lower() == b"content-type"), "")
-        if self.core.should_inject(status, content_type):
-            body = self.core.inject(body)
-            headers = [(k, v) for k, v in headers if k.lower() != b"content-length"]
-            headers.append((b"content-length", str(len(body)).encode()))
-        await send({"type": "http.response.start", "status": status, "headers": headers})
+    async def _flush(self, send: Send, start: Message, body: bytes) -> None:
+        body = self.core.inject(body)
+        headers = [(k, v) for k, v in start.get("headers", []) if k.lower() != b"content-length"]
+        headers.append((b"content-length", str(len(body)).encode()))
+        await send({**start, "headers": headers})
         await send({"type": "http.response.body", "body": body})
 
 

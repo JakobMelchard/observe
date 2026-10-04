@@ -31,6 +31,81 @@ def test_get_html_contains_observe_script(client):
     assert b"observe.js" in resp.data
 
 
+def test_content_length_matches_injected_body(client):
+    resp = client.get("/")
+    assert b"observe.js" in resp.data
+    assert int(resp.headers["Content-Length"]) == len(resp.data)
+
+
+def test_head_keeps_declared_content_length():
+    def head(environ, start_response):
+        start_response("200 OK", [("Content-Type", "text/html"), ("Content-Length", "120")])
+        return []
+
+    resp = Client(ObserveMiddleware(head, ObserveConfig())).head("/")
+    assert resp.headers["Content-Length"] == "120"
+
+
+class Events:
+    """An event stream that records how far it was read and whether it was closed."""
+
+    def __init__(self):
+        self.produced = 0
+        self.closed = False
+
+    def __iter__(self):
+        for n in range(3):
+            self.produced += 1
+            yield b"data: %d\n\n" % n
+
+    def close(self):
+        self.closed = True
+
+
+def call(app, path="/"):
+    started = []
+    environ = {"PATH_INFO": path, "REQUEST_METHOD": "GET"}
+    chunks = ObserveMiddleware(app, ObserveConfig())(environ, lambda *a: started.append(a))
+    return started, iter(chunks)
+
+
+def test_streaming_response_is_not_buffered():
+    events = Events()
+
+    def sse(environ, start_response):
+        start_response("200 OK", [("Content-Type", "text/event-stream")])
+        return events
+
+    started, chunks = call(sse)
+    assert next(chunks) == b"data: 0\n\n"
+    assert events.produced == 1
+    assert started[0][0] == "200 OK"
+
+
+def test_generator_app_is_passed_through():
+    def app(environ, start_response):
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        yield b"a"
+        yield b"b"
+
+    started, chunks = call(app)
+    assert list(chunks) == [b"a", b"b"]
+    assert len(started) == 1
+
+
+@pytest.mark.parametrize("content_type", ["text/event-stream", "text/html"])
+def test_app_iterable_is_closed(content_type):
+    events = Events()
+
+    def app(environ, start_response):
+        start_response("200 OK", [("Content-Type", content_type)])
+        return events
+
+    _, chunks = call(app)
+    assert b"".join(chunks) == b"data: 0\n\ndata: 1\n\ndata: 2\n\n"
+    assert events.closed
+
+
 def test_get_html_contains_config_json(client):
     resp = client.get("/")
     assert resp.status_code == 200
