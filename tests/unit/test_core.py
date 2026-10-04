@@ -6,8 +6,8 @@ import threading
 import pytest
 
 from observe import router
-from observe.config.config import ObserveConfig
-from observe.core import JAVASCRIPT, JSON, ObserveCore
+from observe.config.config import ObserveConfig, load_config
+from observe.core import JAVASCRIPT, JSON, ObserveCore, RateLimit
 
 
 @pytest.fixture(autouse=True)
@@ -300,3 +300,155 @@ class TestDelivery:
         assert route is not None
         core.reply(route, b'{"message": "hi"}', JSON)
         assert seen == ["hi"]
+
+
+class TestInlineConfig:
+    """The config is inlined into a `<script>`; a `<` in it must not end the element."""
+
+    def test_markup_in_a_config_value_is_escaped(self):
+        label = "</script><script>alert(1)</script>"
+        core = ObserveCore(ObserveConfig(feedback_label=label))
+        page = core.inject(b"<html><head></head></html>")
+        assert page.count(b"</script>") == 2
+        assert json.loads(core.config_bytes)["feedbackLabel"] == label
+
+
+FEEDBACK = "/__observe__/feedback"
+OTLP = "/__observe__/otlp/v1/traces"
+
+
+def refuse(core, path=FEEDBACK, headers=None, client="10.0.0.1"):
+    route = core.route(path, "POST")
+    assert route is not None
+    return core.refuse(route, {"content-length": "2", **(headers or {})}, client)
+
+
+class TestBodyLimit:
+    def test_a_declared_length_over_the_cap_is_refused(self):
+        core = ObserveCore(ObserveConfig(max_body_bytes=10))
+        assert refuse(core, headers={"content-length": "10"}) is None
+        reply = refuse(core, headers={"content-length": "11"})
+        assert reply is not None
+        assert reply.status == 413
+
+    @pytest.mark.parametrize("length", ["-1", "abc", "1e3"])
+    def test_a_length_that_is_not_a_count_is_refused(self, core, length):
+        reply = refuse(core, headers={"content-length": length})
+        assert reply is not None
+        assert reply.status == 413
+
+    def test_a_body_over_the_cap_is_not_ingested(self):
+        sink = Recorder()
+        router.register(sink)
+        core = ObserveCore(ObserveConfig(max_body_bytes=10))
+        route = core.route(FEEDBACK, "POST")
+        assert route is not None
+        reply = core.reply(route, b'{"message": "longer than ten bytes"}', JSON)
+        assert reply.status == 413
+        assert sink.feedback == []
+
+    def test_zero_lifts_the_cap(self):
+        core = ObserveCore(ObserveConfig(max_body_bytes=0))
+        assert refuse(core, headers={"content-length": "99999999"}) is None
+
+    def test_get_routes_are_never_refused(self, core):
+        route = core.route("/__observe__/config", "GET")
+        assert route is not None
+        assert core.refuse(route, {"sec-fetch-site": "cross-site"}, "10.0.0.1") is None
+
+
+class TestSameSite:
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {},
+            {"sec-fetch-site": "same-origin"},
+            {"sec-fetch-site": "same-site"},
+            {"sec-fetch-site": "none"},
+            # Sec-Fetch-Site wins when a browser sends both.
+            {"sec-fetch-site": "same-origin", "origin": "https://other.test", "host": "app.test"},
+            {"origin": "http://app.test:8000", "host": "app.test:8000"},
+            {"origin": "http://APP.test", "host": "app.test"},
+            {"origin": "http://[::1]:8000", "host": "[::1]:8000"},
+        ],
+    )
+    def test_same_site_and_non_browser_posts_pass(self, core, headers):
+        assert refuse(core, headers=headers) is None
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"sec-fetch-site": "cross-site"},
+            {"sec-fetch-site": "cross-site", "origin": "http://app.test", "host": "app.test"},
+            {"origin": "https://other.test", "host": "app.test"},
+            {"origin": "null", "host": "app.test"},
+            {"origin": "null"},
+            {"origin": "http://[bad", "host": "app.test"},
+        ],
+    )
+    def test_cross_site_posts_are_refused(self, core, headers):
+        reply = refuse(core, headers=headers)
+        assert reply is not None
+        assert reply.status == 403
+
+    def test_the_check_can_be_switched_off(self):
+        core = ObserveCore(ObserveConfig(same_site=False))
+        assert refuse(core, headers={"sec-fetch-site": "cross-site"}) is None
+
+
+class TestRateLimit:
+    def test_posts_beyond_the_limit_are_refused(self):
+        core = ObserveCore(ObserveConfig(feedback_per_minute=2))
+        assert refuse(core) is None
+        assert refuse(core) is None
+        reply = refuse(core)
+        assert reply is not None
+        assert reply.status == 429
+
+    def test_each_client_has_its_own_budget(self):
+        core = ObserveCore(ObserveConfig(feedback_per_minute=1))
+        assert refuse(core, client="10.0.0.1") is None
+        assert refuse(core, client="10.0.0.2") is None
+        assert refuse(core, client="10.0.0.1") is not None
+
+    def test_feedback_and_otlp_are_counted_apart(self):
+        core = ObserveCore(ObserveConfig(feedback_per_minute=1, otlp_per_minute=1))
+        assert refuse(core, FEEDBACK) is None
+        assert refuse(core, OTLP) is None
+        assert refuse(core, FEEDBACK) is not None
+        assert refuse(core, OTLP) is not None
+
+    def test_a_refused_post_does_not_use_up_the_budget(self):
+        core = ObserveCore(ObserveConfig(feedback_per_minute=1))
+        assert refuse(core, headers={"sec-fetch-site": "cross-site"}) is not None
+        assert refuse(core) is None
+
+    def test_zero_lifts_the_limit(self):
+        core = ObserveCore(ObserveConfig(feedback_per_minute=0))
+        assert all(refuse(core) is None for _ in range(50))
+
+    def test_the_budget_comes_back_when_the_window_turns(self):
+        now = [0.0]
+        limit = RateLimit(1, clock=lambda: now[0])
+        assert limit.allow("a")
+        assert not limit.allow("a")
+        now[0] = 59.0
+        assert not limit.allow("a")
+        now[0] = 60.0
+        assert limit.allow("a")
+
+
+def test_limits_load_from_toml(tmp_path):
+    path = tmp_path / "observe.toml"
+    path.write_text(
+        "[collector]\n"
+        "max_body_bytes = 2048\n"
+        "same_site = false\n"
+        "feedback_per_minute = 3\n"
+        "otlp_per_minute = 0\n"
+    )
+    cfg = load_config(path)
+    assert cfg.max_body_bytes == 2048
+    assert cfg.same_site is False
+    assert cfg.feedback_per_minute == 3
+    assert cfg.otlp_per_minute == 0

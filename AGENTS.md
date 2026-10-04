@@ -51,9 +51,10 @@ CI runs all four on every PR (`.github/workflows/ci.yml`).
   blob, shim caching, script-tag injection, binary-extension skipping and OTLP
   ingest live in `observe/core.py` and nowhere else. If you find yourself
   writing any of them in a middleware, you are writing a bug.
-- **Middlewares are adapters.** They read a request body the way their
-  transport does, call `core.route()` / `core.reply()`, emit a response, and
-  call `core.inject()` on 2xx HTML. Nothing else.
+- **Middlewares are adapters.** They call `core.route()`, ask `core.refuse()`
+  before touching a body (size cap, same-site check, rate limit), read the
+  body the way their transport does, call `core.reply()`, emit a response,
+  and call `core.inject()` on 2xx HTML. Nothing else.
 - **Sink protocol**: implement `push_error(event)` + `push_feedback(event)`.
 - **Router**: singleton — register sinks, broadcasts events to all.
 - **Config**: auto-discovers `observe.toml` or `pyproject.toml` in cwd. The

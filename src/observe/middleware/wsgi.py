@@ -24,8 +24,10 @@ class ObserveMiddleware:
 
         route = self.core.route(path, environ["REQUEST_METHOD"])
         if route is not None:
-            body = _read(environ) if route.needs_body else b""
-            reply = self.core.reply(route, body, environ.get("CONTENT_TYPE", ""))
+            reply = self.core.refuse(route, _headers(environ), environ.get("REMOTE_ADDR", ""))
+            if reply is None:
+                body = _read(environ) if route.needs_body else b""
+                reply = self.core.reply(route, body, environ.get("CONTENT_TYPE", ""))
             return _emit(reply, start_response)
 
         if self.core.is_binary(path):
@@ -52,6 +54,17 @@ class ObserveMiddleware:
         return [body]
 
 
+def _headers(environ: Environ) -> dict[str, str]:
+    """Request headers by lower-case name, the way the core looks them up."""
+    headers = {
+        key[5:].replace("_", "-").lower(): value
+        for key, value in environ.items()
+        if key.startswith("HTTP_")
+    }
+    headers["content-length"] = environ.get("CONTENT_LENGTH", "")
+    return headers
+
+
 def _read(environ: Environ) -> bytes:
     length = int(environ.get("CONTENT_LENGTH") or 0)
     body: bytes = environ["wsgi.input"].read(length) if length else b""
@@ -64,5 +77,5 @@ def _emit(reply: Reply, start_response: StartResponse) -> list[bytes]:
         ("Content-Length", str(len(reply.body))),
         *reply.headers,
     ]
-    start_response(f"{reply.status} OK", headers)
+    start_response(reply.status_line, headers)
     return [reply.body]
