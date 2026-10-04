@@ -18,7 +18,7 @@ function openDB() {
 }
 
 function queueRequest(url, body, timestamp) {
-  openDB().then(function (db) {
+  return openDB().then(function (db) {
     var tx = db.transaction(STORE_NAME, "readwrite");
     var store = tx.objectStore(STORE_NAME);
     store.add({ url: url, body: body, timestamp: timestamp });
@@ -37,31 +37,41 @@ function queueRequest(url, body, timestamp) {
   });
 }
 
+// Resends the queue. An entry leaves the store only once its resend went through; the returned
+// promise rejects when any did not, which is what makes a sync event retry later.
 function flushQueue() {
-  openDB().then(function (db) {
-    var tx = db.transaction(STORE_NAME, "readwrite");
-    var store = tx.objectStore(STORE_NAME);
-    var req = store.getAll();
-    req.onsuccess = function () {
-      var items = req.result;
-      store.clear();
-      items.forEach(function (item) {
+  return openDB().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      var req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    }).then(function (items) {
+      return Promise.all(items.map(function (item) {
         var headers = { "Content-Type": "application/json", "X-Observe-Timestamp": item.timestamp || new Date().toISOString() };
-        fetch(item.url, { method: "POST", headers: headers, body: item.body }).catch(function () {});
-      });
-    };
-  }).catch(function () {});
+        return fetch(item.url, { method: "POST", headers: headers, body: item.body }).then(function () {
+          db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).delete(item.id);
+        });
+      }));
+    });
+  });
 }
 
 self.addEventListener("fetch", function (event) {
   var url = new URL(event.request.url);
   if (url.pathname.indexOf("/__observe__/otlp") !== 0) return;
 
+  // fetch uses the body up, so the copy to queue is taken before it runs.
+  var copy = event.request.clone();
   event.respondWith(
     fetch(event.request).catch(function () {
       event.waitUntil(
-        event.request.clone().text().then(function (body) {
-          queueRequest(url.href, body, new Date().toISOString());
+        copy.text().then(function (body) {
+          return queueRequest(url.href, body, new Date().toISOString());
+        }).then(function () {
+          // Background Sync is not available in every browser.
+          if (self.registration.sync) return self.registration.sync.register("observe-flush");
+        }).catch(function (err) {
+          console.error("observe sw: failed to register sync", err);
         })
       );
       return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
@@ -76,7 +86,8 @@ self.addEventListener("sync", function (event) {
 });
 
 self.addEventListener("online", function () {
-  flushQueue();
+  // Nothing retries here; what failed stays queued for the next flush.
+  flushQueue().catch(function () {});
 });
 
 self.addEventListener("activate", function (event) {
