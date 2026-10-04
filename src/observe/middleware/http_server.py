@@ -24,11 +24,17 @@ def patch_handler(handler_class: type[Any], config: ObserveConfig) -> None:
         route = core.route(path, method)
         if route is None:
             return False
-        body = b""
-        if route.needs_body:
-            length = int(handler.headers.get("Content-Length", 0))
-            body = handler.rfile.read(length) if length else b""
-        _emit(handler, core.reply(route, body, handler.headers.get("Content-Type", "")))
+        reply = core.refuse(route, handler.headers, handler.client_address[0])
+        if reply is not None:
+            # The body stays unread, so the connection cannot serve another request.
+            handler.close_connection = True
+        else:
+            body = b""
+            if route.needs_body:
+                length = int(handler.headers.get("Content-Length", 0))
+                body = handler.rfile.read(length) if length else b""
+            reply = core.reply(route, body, handler.headers.get("Content-Type", ""))
+        _emit(handler, reply)
         return True
 
     def _wrap(method: str) -> None:

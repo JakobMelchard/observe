@@ -74,12 +74,32 @@ Configure via `observe.toml`:
 ```toml
 [collector]
 endpoint = "/__observe__/otlp"
+max_body_bytes = 1048576
+same_site = true
+feedback_per_minute = 10
+otlp_per_minute = 300
 
 [frontend]
 feedback_label = "Feedback"
 enrich_hook = "__observe_enrich__"
 register_sw = true
 ```
+
+The four limits apply to the POST endpoints (`feedback`, `otlp`); the values
+above are the defaults, and `0` (or `false`) lifts one.
+
+- `max_body_bytes`: a larger body is answered with 413 and not read.
+- `same_site`: a POST that a browser marks as coming from another site is
+  answered with 403. That is `Sec-Fetch-Site: cross-site`, or, where the browser
+  does not send that header (plain HTTP outside localhost), an `Origin` whose
+  host differs from the request's `Host`. Clients that send neither header,
+  such as curl or a server-side exporter, are not affected. Behind a reverse
+  proxy that rewrites `Host` on plain HTTP, either pass `Host` through or
+  switch the check off.
+- `feedback_per_minute`, `otlp_per_minute`: accepted POSTs per client address
+  in a one-minute window, answered with 429 beyond that. The count is kept in
+  memory per process, and behind a reverse proxy every visitor shares the
+  proxy's address, so size the limits for the whole site there.
 
 On a static site there is no middleware to inject the shim, so include `observe.js` yourself and set
 `window.__OBSERVE_CONFIG__` before it loads. Two keys exist for that case: `feedbackEndpoint` (a

@@ -30,8 +30,15 @@ class ObserveASGIMiddleware:
 
         route = self.core.route(path, scope["method"])
         if route is not None:
-            body = await _read(receive) if route.needs_body else b""
-            await _emit(send, self.core.reply(route, body, _content_type(scope.get("headers", []))))
+            raw = scope.get("headers", [])
+            hdrs = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in raw}
+            client = scope.get("client")
+            reply = self.core.refuse(route, hdrs, client[0] if client else "")
+            if reply is None:
+                cap = self.cfg.max_body_bytes
+                body = await _read(receive, cap) if route.needs_body else b""
+                reply = self.core.reply(route, body, _content_type(raw))
+            await _emit(send, reply)
             return
 
         if self.core.is_binary(path):
@@ -70,9 +77,10 @@ def _content_type(headers: list[tuple[bytes, bytes]]) -> str:
     return next((v.decode() for k, v in headers if k.lower() == b"content-type"), "")
 
 
-async def _read(receive: Receive) -> bytes:
+async def _read(receive: Receive, cap: int) -> bytes:
+    """Read the request body, giving up once it has outgrown ``cap`` (0: no cap)."""
     body = bytearray()
-    while True:
+    while not 0 < cap < len(body):
         msg = await receive()
         if msg["type"] != "http.request":
             break

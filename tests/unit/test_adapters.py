@@ -5,8 +5,11 @@ coverage at all, which is how ``http_server`` drifted twice.
 """
 
 import asyncio
+import contextlib
+import http.client
 import json
 import threading
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -219,3 +222,126 @@ def test_http_server_otlp_ignores_query_string(http_url):
     payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "qs"}]}]}]}
     fetch(f"{http_url}/__observe__/otlp/v1/traces?x=1", json.dumps(payload).encode())
     assert sink.errors[0].message == "qs"
+
+
+# --------------------------------------------------------------------------
+# Ingest limits
+# --------------------------------------------------------------------------
+
+FEEDBACK = "/__observe__/feedback"
+LIMITS = {"max_body_bytes": 64, "feedback_per_minute": 2}
+
+
+def asgi_post(app, chunks, headers=()):
+    """POST ``chunks`` to the feedback route; returns the status and the receive count."""
+    scope = {
+        "type": "http",
+        "path": FEEDBACK,
+        "method": "POST",
+        "headers": [(b"content-type", b"application/json"), *headers],
+        "client": ("10.0.0.1", 50000),
+    }
+    pending = list(chunks)
+    reads = 0
+    sent = []
+
+    async def receive():
+        nonlocal reads
+        reads += 1
+        return {"type": "http.request", "body": pending.pop(0), "more_body": bool(pending)}
+
+    async def send(msg):
+        sent.append(msg)
+
+    asyncio.run(app(scope, receive, send))
+    return sent[0]["status"], reads
+
+
+def test_asgi_refuses_a_declared_oversize_unread():
+    sink = Recorder()
+    router.register(sink)
+    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    status, reads = asgi_post(app, [b"x" * 65], [(b"content-length", b"65")])
+    assert (status, reads) == (413, 0)
+    assert sink.feedback == []
+
+
+def test_asgi_stops_reading_a_body_that_outgrows_the_cap():
+    sink = Recorder()
+    router.register(sink)
+    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    status, reads = asgi_post(app, [b"x" * 40] * 50)
+    assert (status, reads) == (413, 2)
+    assert sink.feedback == []
+
+
+def test_asgi_refuses_cross_site_posts():
+    sink = Recorder()
+    router.register(sink)
+    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    assert asgi_post(app, [b"{}"], [(b"sec-fetch-site", b"cross-site")])[0] == 403
+    mismatch = [(b"origin", b"https://other.test"), (b"host", b"app.test")]
+    assert asgi_post(app, [b"{}"], mismatch)[0] == 403
+    assert sink.feedback == []
+    match = [(b"origin", b"http://app.test"), (b"host", b"app.test")]
+    assert asgi_post(app, [b"{}"], match)[0] == 200
+
+
+def test_asgi_refuses_posts_that_come_too_fast():
+    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    assert [asgi_post(app, [b"{}"])[0] for _ in range(3)] == [200, 200, 429]
+
+
+@pytest.fixture
+def limited_url():
+    class Limited(DemoHandler):
+        protocol_version = "HTTP/1.1"
+
+    patch_handler(Limited, ObserveConfig(**LIMITS))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Limited)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+def post_status(url, data=b"{}", headers=None):
+    req = urllib.request.Request(url, data=data, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status
+    except urllib.error.HTTPError as err:
+        return err.code
+
+
+def test_http_server_refuses_oversized_posts(limited_url):
+    sink = Recorder()
+    router.register(sink)
+    assert post_status(limited_url + FEEDBACK, b"x" * 65) == 413
+    assert sink.feedback == []
+
+
+def test_http_server_closes_the_connection_on_an_unread_body(limited_url):
+    """Left open, the unread body would be parsed as the next request."""
+    host = limited_url.removeprefix("http://")
+    conn = http.client.HTTPConnection(host, timeout=5)
+    conn.request("POST", FEEDBACK, body=b"x" * 65)
+    resp = conn.getresponse()
+    assert resp.status == 413
+    resp.read()
+    with contextlib.suppress(ConnectionResetError):
+        assert conn.sock.recv(1) == b""
+    conn.close()
+
+
+def test_http_server_refuses_cross_site_posts(limited_url):
+    sink = Recorder()
+    router.register(sink)
+    assert post_status(limited_url + FEEDBACK, headers={"Sec-Fetch-Site": "cross-site"}) == 403
+    assert post_status(limited_url + FEEDBACK, headers={"Origin": "https://other.test"}) == 403
+    assert sink.feedback == []
+    assert post_status(limited_url + FEEDBACK, headers={"Origin": limited_url}) == 200
+
+
+def test_http_server_refuses_posts_that_come_too_fast(limited_url):
+    assert [post_status(limited_url + FEEDBACK) for _ in range(3)] == [200, 200, 429]

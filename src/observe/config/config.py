@@ -7,6 +7,10 @@ CANDIDATES = ("observe.toml", "pyproject.toml")
 #: ``(toml section, key) -> ObserveConfig attribute``
 FIELDS = {
     ("collector", "endpoint"): "endpoint",
+    ("collector", "max_body_bytes"): "max_body_bytes",
+    ("collector", "same_site"): "same_site",
+    ("collector", "feedback_per_minute"): "feedback_per_minute",
+    ("collector", "otlp_per_minute"): "otlp_per_minute",
     ("frontend", "feedback_label"): "feedback_label",
     ("frontend", "enrich_hook"): "enrich_hook",
     ("frontend", "register_sw"): "register_sw",
@@ -16,6 +20,13 @@ FIELDS = {
 @dataclass
 class ObserveConfig:
     endpoint: str = "/__observe__/otlp"
+    #: Limits on the POST endpoints. 0 lifts a limit.
+    max_body_bytes: int = 1_048_576
+    #: Refuse POSTs a browser marks as coming from another site.
+    same_site: bool = True
+    #: Accepted POSTs per client address, counted per process.
+    feedback_per_minute: int = 10
+    otlp_per_minute: int = 300
     feedback_label: str = "Feedback"
     enrich_hook: str = "__observe_enrich__"
     register_sw: bool = True

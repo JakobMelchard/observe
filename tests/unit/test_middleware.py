@@ -220,3 +220,66 @@ def test_otlp_logs_calls_router(client):
     assert len(events) == 1
     assert events[0].message == "test-log"
     assert events[0].level == "warning"
+
+
+FEEDBACK = "/__observe__/feedback"
+
+
+@pytest.fixture
+def limited():
+    events = []
+
+    class TestSink:
+        def push_error(self, event):
+            pass
+
+        def push_feedback(self, event):
+            events.append(event)
+
+    router.register(TestSink())
+    cfg = ObserveConfig(max_body_bytes=64, feedback_per_minute=2)
+    return Client(ObserveMiddleware(fixture_app.app, cfg)), events
+
+
+def test_oversized_post_is_refused(limited):
+    client, events = limited
+    resp = client.post(FEEDBACK, data=b"x" * 65, content_type="application/json")
+    assert resp.status_code == 413
+    assert events == []
+
+
+def test_oversized_post_is_refused_before_the_body_is_read():
+    class Unreadable:
+        def read(self, *args):
+            raise AssertionError("the body was read")
+
+    app = ObserveMiddleware(fixture_app.app, ObserveConfig(max_body_bytes=64))
+    environ = {
+        "PATH_INFO": FEEDBACK,
+        "REQUEST_METHOD": "POST",
+        "CONTENT_LENGTH": "65",
+        "wsgi.input": Unreadable(),
+    }
+    started = []
+    app(environ, lambda *args: started.append(args))
+    assert started[0][0].startswith("413 ")
+    assert not started[0][0].endswith(" OK")
+
+
+def test_cross_site_post_is_refused(limited):
+    client, events = limited
+    resp = client.post(FEEDBACK, data=b"{}", headers={"Sec-Fetch-Site": "cross-site"})
+    assert resp.status_code == 403
+    resp = client.post(FEEDBACK, data=b"{}", headers={"Origin": "https://other.test"})
+    assert resp.status_code == 403
+    assert events == []
+    resp = client.post(FEEDBACK, data=b"{}", headers={"Origin": "http://localhost"})
+    assert resp.status_code == 200
+    assert len(events) == 1
+
+
+def test_posts_that_come_too_fast_are_refused(limited):
+    client, events = limited
+    statuses = [client.post(FEEDBACK, data=b"{}").status_code for _ in range(3)]
+    assert statuses == [200, 200, 429]
+    assert len(events) == 2

@@ -1,5 +1,10 @@
 [collector]
 endpoint = "/__observe__/otlp"
+# Limits on the POST endpoints; 0 or false lifts one.
+max_body_bytes = 1048576
+same_site = true
+feedback_per_minute = 10
+otlp_per_minute = 300
 
 [frontend]
 feedback_label = "Feedback"
