@@ -37,8 +37,24 @@ function queueRequest(url, body, timestamp) {
   });
 }
 
-// Resends the queue. An entry leaves the store only once its resend went through; the returned
-// promise rejects when any did not, which is what makes a sync event retry later.
+// Resends one queued entry and deletes it once the server gave a final answer. A network failure,
+// a 5xx or a 429 may go differently on a later try, so the entry stays; any other answer would be
+// the same next time, so the entry goes. Settles after the delete has committed.
+function resend(db, item) {
+  var headers = { "Content-Type": "application/json", "X-Observe-Timestamp": item.timestamp || new Date().toISOString() };
+  return fetch(item.url, { method: "POST", headers: headers, body: item.body }).then(function (resp) {
+    if (resp.status >= 500 || resp.status === 429) throw new Error("observe sw: resend answered " + resp.status);
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(STORE_NAME, "readwrite");
+      tx.objectStore(STORE_NAME).delete(item.id);
+      tx.oncomplete = resolve;
+      tx.onerror = tx.onabort = function () { reject(tx.error); };
+    });
+  });
+}
+
+// Resends the queue. The returned promise settles after every resend has, and rejects when any
+// entry is still queued, which is what makes a sync event retry later.
 function flushQueue() {
   return openDB().then(function (db) {
     return new Promise(function (resolve, reject) {
@@ -46,12 +62,12 @@ function flushQueue() {
       req.onsuccess = function () { resolve(req.result); };
       req.onerror = function () { reject(req.error); };
     }).then(function (items) {
+      var kept = 0;
       return Promise.all(items.map(function (item) {
-        var headers = { "Content-Type": "application/json", "X-Observe-Timestamp": item.timestamp || new Date().toISOString() };
-        return fetch(item.url, { method: "POST", headers: headers, body: item.body }).then(function () {
-          db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).delete(item.id);
-        });
-      }));
+        return resend(db, item).catch(function () { kept += 1; });
+      })).then(function () {
+        if (kept) throw new Error("observe sw: " + kept + " queued requests not resent");
+      });
     });
   });
 }

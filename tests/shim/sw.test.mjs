@@ -17,17 +17,27 @@ function fakeIndexedDB(rows) {
     queueMicrotask(function () { if (req.onsuccess) req.onsuccess({ target: req }); });
     return req;
   }
-  const store = {
-    add(value) { rows.set(nextId, Object.assign({ id: nextId }, value)); return request(nextId++); },
-    count() { return request(rows.size); },
-    getAll() { return request(Array.from(rows.values())); },
-    clear() { rows.clear(); return request(); },
-    delete(id) { rows.delete(id); return request(); },
-  };
-  const db = {
-    objectStoreNames: { contains() { return true; } },
-    transaction() { return { objectStore() { return store; } }; },
-  };
+  function transaction() {
+    const deleted = [];
+    const tx = {
+      objectStore() {
+        return {
+          add(value) { rows.set(nextId, Object.assign({ id: nextId }, value)); return request(nextId++); },
+          count() { return request(rows.size); },
+          getAll() { return request(Array.from(rows.values())); },
+          clear() { rows.clear(); return request(); },
+          delete(id) { deleted.push(id); return request(); },
+        };
+      },
+    };
+    // A delete only shows once its transaction has committed.
+    setTimeout(function () {
+      deleted.forEach(function (id) { rows.delete(id); });
+      if (tx.oncomplete) tx.oncomplete();
+    }, 0);
+    return tx;
+  }
+  const db = { objectStoreNames: { contains() { return true; } }, transaction: transaction };
   return { open() { return request(db); } };
 }
 
@@ -54,6 +64,10 @@ function offline() {
   return Promise.reject(new TypeError("Failed to fetch"));
 }
 
+function bodies(worker) {
+  return Array.from(worker.rows.values()).map(function (row) { return row.body; });
+}
+
 test("queue entries survive a failed flush", async function () {
   const worker = load(offline);
   await worker.sw.queueRequest(OTLP, "{}", "2026-01-01T00:00:00Z");
@@ -67,21 +81,33 @@ test("only delivered entries leave the queue", async function () {
   const sent = [];
   const worker = load(function (url, init) {
     sent.push(init.body);
-    return init.body === "lost" ? offline() : Promise.resolve({ ok: true });
+    return init.body === "lost" ? offline() : Promise.resolve({ ok: true, status: 200 });
   });
   await worker.sw.queueRequest(OTLP, "lost", "");
   await worker.sw.queueRequest(OTLP, "delivered", "");
 
   await assert.rejects(worker.sw.flushQueue());
   assert.deepEqual(sent, ["lost", "delivered"]);
-  assert.deepEqual(Array.from(worker.rows.values()).map(function (row) { return row.body; }), ["lost"]);
+  assert.deepEqual(bodies(worker), ["lost"]);
+});
+
+test("an answer that a later try could change keeps the entry", async function () {
+  const worker = load(function (url, init) {
+    return Promise.resolve({ ok: false, status: Number(init.body) });
+  });
+  for (const status of ["400", "413", "429", "500", "503"]) {
+    await worker.sw.queueRequest(OTLP, status, "");
+  }
+
+  await assert.rejects(worker.sw.flushQueue());
+  assert.deepEqual(bodies(worker), ["429", "500", "503"]);
 });
 
 test("the sync event waits for the flush", async function () {
   let delivered = false;
   const worker = load(function () {
     return new Promise(function (resolve) {
-      setTimeout(function () { delivered = true; resolve({ ok: true }); }, 10);
+      setTimeout(function () { delivered = true; resolve({ ok: true, status: 200 }); }, 10);
     });
   });
   await worker.sw.queueRequest(OTLP, "{}", "");
@@ -108,6 +134,6 @@ test("a request that fails offline is queued and asks for a sync", async functio
 
   assert.equal((await response).status, 200);
   await Promise.all(waits);
-  assert.deepEqual(Array.from(worker.rows.values()).map(function (row) { return row.body; }), ['{"resourceSpans":[]}']);
+  assert.deepEqual(bodies(worker), ['{"resourceSpans":[]}']);
   assert.deepEqual(worker.tags, ["observe-flush"]);
 });
