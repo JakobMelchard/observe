@@ -1,0 +1,12 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  // Lint only: no formatter yet, and the shim keeps its ES5 syntax (var, function, concatenation).
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "rules": {
+      "complexity": { "useArrowFunction": "off", "noArguments": "off", "useOptionalChain": "off" },
+      "style": { "useTemplate": "off" }
+    }
+  }
+}

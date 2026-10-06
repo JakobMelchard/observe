@@ -8,10 +8,12 @@ on:
 
 jobs:
   python:
-    uses: JakobMelchard/.github/.github/workflows/python.yml@main
+    uses: JakobMelchard/.github/.github/workflows/python.yml@bfaa9063ee9c867b43abdad960504803ac847aa0 # v1.3.0
     with:
       python-version: "3.11"
       package-manager: uv
+      # The workflow prefixes only the first command with `uv run`.
+      lint-cmd: "ruff check . && uv run ruff format --check . && uv run mypy"
 
   hooks:
-    uses: JakobMelchard/.github/.github/workflows/hooks.yml@main
+    uses: JakobMelchard/.github/.github/workflows/hooks.yml@bfaa9063ee9c867b43abdad960504803ac847aa0 # v1.3.0

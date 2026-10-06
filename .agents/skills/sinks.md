@@ -9,6 +9,7 @@
 ```python
 from observe.sink.sink import ErrorEvent, FeedbackEvent
 
+
 class MySink:
     def push_error(self, event: ErrorEvent) -> None:
         # send to your backend
@@ -31,6 +32,7 @@ class ErrorEvent:
     context: dict[str, Any]
     trace_id: str | None
     span_id: str | None
+
 
 @dataclass
 class FeedbackEvent:

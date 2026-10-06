@@ -11,6 +11,22 @@ repos:
     rev: v0.16.9
     hooks:
       - id: ruff-check
+      - id: ruff-format
+  - repo: https://github.com/biomejs/pre-commit
+    rev: v2.5.15
+    hooks:
+      - id: biome-ci
+        exclude: ^contrib/
+  - repo: local
+    hooks:
+      # Needs the project env (uv sync --extra dev); CI runs it in the python job instead.
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
   - repo: https://github.com/JakobMelchard/.githooks
     rev: v1.0.0
     hooks:
