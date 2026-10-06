@@ -44,7 +44,7 @@ function queueRequest(url, body, timestamp) {
 // a 5xx or a 429 may go differently on a later try, so the entry stays; any other answer would be
 // the same next time, so the entry goes. Settles after the delete has committed.
 function resend(db, item) {
-  var headers = { "Content-Type": "application/json", "X-Observe-Timestamp": item.timestamp || new Date().toISOString() };
+  var headers = { "Content-Type": "application/json" };
   return fetch(item.url, { method: "POST", headers: headers, body: item.body }).then(function (resp) {
     if (resp.status >= 500 || resp.status === 429) throw new Error("observe sw: resend answered " + resp.status);
     return new Promise(function (resolve, reject) {

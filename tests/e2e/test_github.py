@@ -67,7 +67,7 @@ class TestIssueComposition:
         sink().push_feedback(event(context={"logs": logs}))
         body = capture[0]["body"]
         assert "Logs (last 1):" in body
-        assert "[editor] save — stem-1" in body
+        assert "[editor] save: stem-1" in body
 
     def test_no_label_without_enrichment(self, capture):
         sink().push_feedback(event())

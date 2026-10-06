@@ -53,10 +53,12 @@ class AppAuth:
 
         jwt = self._jwt()
         if not self._installation:
-            found = self._get(f"/repos/{self.repo}/installation", jwt)
+            found = self._call(f"/repos/{self.repo}/installation", jwt, method="GET")
             self._installation = int(found["id"])
 
-        issued = self._post(f"/app/installations/{self._installation}/access_tokens", jwt)
+        issued = self._call(
+            f"/app/installations/{self._installation}/access_tokens", jwt, method="POST"
+        )
         self._token = str(issued["token"])
         self._expires = _timestamp(str(issued.get("expires_at", "")))
         log.info("github app: token for %s valid until %s", self.repo, issued.get("expires_at"))
@@ -81,12 +83,6 @@ class AppAuth:
         if not isinstance(key, rsa.RSAPrivateKey):
             raise TypeError("a GitHub App private key is RSA")
         return key.sign(payload, padding.PKCS1v15(), hashes.SHA256())
-
-    def _get(self, path: str, jwt: str) -> dict[str, Any]:
-        return self._call(path, jwt, method="GET")
-
-    def _post(self, path: str, jwt: str) -> dict[str, Any]:
-        return self._call(path, jwt, method="POST")
 
     @staticmethod
     def _call(path: str, jwt: str, *, method: str) -> dict[str, Any]:
