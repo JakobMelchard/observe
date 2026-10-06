@@ -45,7 +45,8 @@ uv run ruff check .              # lint
 uv run ruff format .             # format
 ```
 
-CI runs all four on every PR (`.github/workflows/ci.yml`).
+CI runs all four on every PR (`.github/workflows/ci.yml`). The shim JS is
+linted by biome (`biome.jsonc`) as a prek hook, which CI runs too (`prek run --all-files`).
 
 ## Key patterns
 
