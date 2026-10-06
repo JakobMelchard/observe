@@ -45,15 +45,16 @@
   };
 
   // 3. global errors
-  window.onerror = function (msg, source, line, col, err) {
+  // A listener, not window.onerror: the host page may have its own handler there.
+  window.addEventListener("error", function (e) {
     tryToSendSpan("uncaught error", "error", {
-      message: msg,
-      source: source,
-      line: line,
-      col: col,
-      stack: err && err.stack ? err.stack : null,
+      message: e.message,
+      source: e.filename,
+      line: e.lineno,
+      col: e.colno,
+      stack: e.error && e.error.stack ? e.error.stack : null,
     });
-  };
+  });
 
   window.addEventListener("unhandledrejection", function (e) {
     tryToSendSpan("unhandled rejection", "error", {
@@ -103,6 +104,9 @@
           }],
         }],
       }),
+    }).catch(function () {
+      // Left unhandled, a failed send would come back as an "unhandled rejection" span,
+      // which fails too: a loop for as long as the endpoint is down.
     });
   }
 
@@ -115,7 +119,9 @@
 
   // 6. service worker registration
   if (registerSw && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/__observe__/observe.sw.js", { scope: "/" }).catch(function () {});
+    navigator.serviceWorker.register("/__observe__/observe.sw.js", { scope: "/" }).catch(function (err) {
+      console.warn("observe: service worker registration failed", err);
+    });
   }
 
   // 7. feedback trigger and form

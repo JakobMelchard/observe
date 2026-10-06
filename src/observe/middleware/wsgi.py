@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from itertools import islice
 from typing import Any
 
 from observe.config.config import ObserveConfig
@@ -33,25 +34,48 @@ class ObserveMiddleware:
         if self.core.is_binary(path):
             return self.app(environ, start_response)
 
-        status: list[str] = []
-        headers: list[tuple[str, str]] = []
+        return self._respond(environ, start_response)
+
+    def _respond(self, environ: Environ, start_response: StartResponse) -> Iterator[bytes]:
+        """Hold ``start_response`` back until the headers say whether to inject."""
+        started: list[tuple[str, list[tuple[str, str]], Any]] = []
+        written: list[bytes] = []
+        forwarded = False
 
         def _capture(code: str, hdrs: list[tuple[str, str]], exc_info: Any = None) -> Any:
-            status.append(code)
-            headers[:] = hdrs
-            return start_response(code, hdrs, exc_info)
+            if forwarded:
+                return start_response(code, hdrs, exc_info)
+            started[:] = [(code, hdrs, exc_info)]
+            return written.append
 
-        body = b"".join(self.app(environ, _capture))
-        code = status[0] if status else "200 OK"
-        content_type = next((v for k, v in headers if k.lower() == "content-type"), "")
+        result = self.app(environ, _capture)
+        try:
+            chunks = iter(result)
+            # A generator app calls start_response on its first iteration.
+            head = [*islice(chunks, 1)]
+            code, headers, exc_info = started[0]
+            content_type = next((v for k, v in headers if k.lower() == "content-type"), "")
 
-        if self.core.should_inject(int(code.split(" ", 1)[0]), content_type):
-            body = self.core.inject(body)
-            headers[:] = [
-                (k, str(len(body))) if k.lower() == "content-length" else (k, v) for k, v in headers
-            ]
+            if not self.core.should_inject(int(code.split(" ", 1)[0]), content_type):
+                forwarded = True
+                start_response(code, headers, exc_info)
+                yield from (*written, *head)
+                yield from chunks
+                return
 
-        return [body]
+            body = b"".join((*written, *head, *chunks))
+            html = self.core.inject(body)
+            if html != body:
+                headers = [
+                    (k, str(len(html))) if k.lower() == "content-length" else (k, v)
+                    for k, v in headers
+                ]
+            start_response(code, headers, exc_info)
+            yield html
+        finally:
+            close = getattr(result, "close", None)
+            if close is not None:
+                close()
 
 
 def _headers(environ: Environ) -> dict[str, str]:

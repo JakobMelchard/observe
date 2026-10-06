@@ -38,10 +38,14 @@ def patch_handler(handler_class: type[Any], config: ObserveConfig) -> None:
         return True
 
     def _wrap(method: str) -> None:
-        original = getattr(handler_class, f"do_{method}")
+        original = getattr(handler_class, f"do_{method}", None)
 
         def handle(handler: Any) -> None:
             if _serve(handler, method):
+                return
+            if original is None:
+                # What the base handler answers for a method it does not have.
+                handler.send_error(501, f"Unsupported method ({method!r})")
                 return
             buf = _BufferedWfile(handler.wfile)
             handler.wfile = buf

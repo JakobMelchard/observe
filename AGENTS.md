@@ -27,6 +27,8 @@ observe/
 │   ├── unit/test_adapters.py  # ASGI + http.server adapters
 │   ├── unit/test_middleware.py# WSGI adapter
 │   ├── unit/test_github_app.py# GitHub App auth
+│   ├── unit/test_shim.py      # Runs tests/shim through node, skipped without it
+│   ├── shim/*.test.mjs        # Shim + service worker, node:test with fakes
 │   ├── e2e/test_sentry.py     # Sink event shapes
 │   ├── e2e/test_github.py     # GitHub issue sink
 │   └── fixture/
