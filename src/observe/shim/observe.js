@@ -82,7 +82,7 @@
 
   function tryToSendSpan(name, level, attrs) {
     if (!traces) return;
-    var enriched = Object.assign(enrich(), attrs || {});
+    var enriched = Object.assign(enrich(), attrs || {}, { level: level });
     _fetch(endpoint + "/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,7 +113,8 @@
   function generateId(len) {
     var hex = "0123456789abcdef";
     var id = "";
-    for (var i = 0; i < len; i++) id += hex[Math.floor(Math.random() * 16)];
+    var i;
+    for (i = 0; i < len; i++) id += hex[Math.floor(Math.random() * 16)];
     return id;
   }
 
@@ -139,17 +140,17 @@
   var NAME_KEY = "__observe_name__";
 
   function remembered() {
-    try { return localStorage.getItem(NAME_KEY) || ""; } catch (e) { return ""; }
+    try { return localStorage.getItem(NAME_KEY) || ""; } catch (_e) { return ""; }
   }
 
   function remember(name) {
-    try { localStorage.setItem(NAME_KEY, name); } catch (e) { /* private window */ }
+    try { localStorage.setItem(NAME_KEY, name); } catch (_e) { /* private window */ }
   }
 
   function make(tag, css, props) {
     var el = document.createElement(tag);
     el.style.cssText = css;
-    for (var key in props) { if (props.hasOwnProperty(key)) el[key] = props[key]; }
+    Object.keys(props || {}).forEach(function (k) { el[k] = props[k]; });
     return el;
   }
 
@@ -186,9 +187,9 @@
     panel.setAttribute("aria-label", feedbackLabel);
 
     var category = make("select", field);
-    for (var i = 0; i < CATEGORIES.length; i++) {
-      category.appendChild(make("option", "", { value: CATEGORIES[i], textContent: CATEGORIES[i] }));
-    }
+    CATEGORIES.forEach(function (c) {
+      category.appendChild(make("option", "", { value: c, textContent: c }));
+    });
     var message = make("textarea", field + "height:5rem;resize:vertical;",
       { placeholder: "What happened?", spellcheck: false });
     var name = make("input", field,

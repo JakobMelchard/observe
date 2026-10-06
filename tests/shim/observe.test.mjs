@@ -17,7 +17,10 @@ function load(fetch, extra) {
     console: console,
     // No body yet, so the feedback form never builds.
     document: { body: null, addEventListener() {} },
-    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    addEventListener(type, fn) {
+      listeners[type] = listeners[type] || [];
+      listeners[type].push(fn);
+    },
   }, extra);
   window.window = window;
   vm.runInNewContext(SOURCE, window);

@@ -81,7 +81,7 @@ test("queue entries survive a failed flush", async function () {
 
 test("only delivered entries leave the queue", async function () {
   const sent = [];
-  const worker = load(function (url, init) {
+  const worker = load(function (_url, init) {
     sent.push(init.body);
     return init.body === "lost" ? offline() : Promise.resolve({ ok: true, status: 200 });
   });
@@ -94,7 +94,7 @@ test("only delivered entries leave the queue", async function () {
 });
 
 test("an answer that a later try could change keeps the entry", async function () {
-  const worker = load(function (url, init) {
+  const worker = load(function (_url, init) {
     return Promise.resolve({ ok: false, status: Number(init.body) });
   });
   for (const status of ["400", "413", "429", "500", "503"]) {
@@ -144,7 +144,7 @@ test("a request that fails offline is queued and asks for a sync", async functio
 
 test("overlapping flushes share one run and post each entry once", async function () {
   const sent = [];
-  const worker = load(function (url, init) {
+  const worker = load(function (_url, init) {
     sent.push(init.body);
     return new Promise(function (resolve) {
       setTimeout(function () { resolve({ ok: true, status: 200 }); }, 10);

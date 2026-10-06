@@ -1,4 +1,3 @@
-var CACHE_NAME = "observe-queue-v1";
 var MAX_QUEUE = 500;
 var DB_NAME = "observe-buffer";
 var STORE_NAME = "requests";
@@ -26,13 +25,12 @@ function queueRequest(url, body, timestamp) {
       store.add({ url: url, body: body, timestamp: timestamp });
       var countReq = store.count();
       countReq.onsuccess = function () {
-        if (countReq.result > MAX_QUEUE) {
-          var cursorReq = store.openCursor();
-          cursorReq.onsuccess = function (e) {
-            var cursor = e.target.result;
-            if (cursor) { cursor.delete(); }
-          };
-        }
+        if (countReq.result <= MAX_QUEUE) return;
+        var cursorReq = store.openCursor();
+        cursorReq.onsuccess = function (e) {
+          var cursor = e.target.result;
+          if (cursor) { cursor.delete(); }
+        };
       };
       tx.oncomplete = resolve;
       tx.onerror = tx.onabort = function () { reject(tx.error); };
