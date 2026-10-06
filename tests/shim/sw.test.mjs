@@ -18,11 +18,12 @@ function fakeIndexedDB(rows) {
     return req;
   }
   function transaction() {
+    const added = [];
     const deleted = [];
     const tx = {
       objectStore() {
         return {
-          add(value) { rows.set(nextId, Object.assign({ id: nextId }, value)); return request(nextId++); },
+          add(value) { added.push(Object.assign({ id: nextId }, value)); return request(nextId++); },
           count() { return request(rows.size); },
           getAll() { return request(Array.from(rows.values())); },
           clear() { rows.clear(); return request(); },
@@ -30,8 +31,9 @@ function fakeIndexedDB(rows) {
         };
       },
     };
-    // A delete only shows once its transaction has committed.
+    // A write only shows once its transaction has committed.
     setTimeout(function () {
+      added.forEach(function (row) { rows.set(row.id, row); });
       deleted.forEach(function (id) { rows.delete(id); });
       if (tx.oncomplete) tx.oncomplete();
     }, 0);
@@ -133,7 +135,33 @@ test("a request that fails offline is queued and asks for a sync", async functio
   });
 
   assert.equal((await response).status, 200);
+  // The event stays alive until the write has committed, not just until it was issued.
+  assert.equal(worker.rows.size, 0);
   await Promise.all(waits);
   assert.deepEqual(bodies(worker), ['{"resourceSpans":[]}']);
   assert.deepEqual(worker.tags, ["observe-flush"]);
+});
+
+test("overlapping flushes share one run and post each entry once", async function () {
+  const sent = [];
+  const worker = load(function (url, init) {
+    sent.push(init.body);
+    return new Promise(function (resolve) {
+      setTimeout(function () { resolve({ ok: true, status: 200 }); }, 10);
+    });
+  });
+  await worker.sw.queueRequest(OTLP, "a", "");
+  await worker.sw.queueRequest(OTLP, "b", "");
+
+  const first = worker.sw.flushQueue();
+  const second = worker.sw.flushQueue();
+  assert.equal(first, second);
+  await Promise.all([first, second]);
+  assert.deepEqual(sent.sort(), ["a", "b"]);
+  assert.equal(worker.rows.size, 0);
+
+  // A later flush is a new run.
+  await worker.sw.queueRequest(OTLP, "c", "");
+  await worker.sw.flushQueue();
+  assert.deepEqual(sent.sort(), ["a", "b", "c"]);
 });

@@ -17,21 +17,26 @@ function openDB() {
   });
 }
 
+// Settles after the write has committed, so a fetch event that waits on it stays alive that long.
 function queueRequest(url, body, timestamp) {
   return openDB().then(function (db) {
-    var tx = db.transaction(STORE_NAME, "readwrite");
-    var store = tx.objectStore(STORE_NAME);
-    store.add({ url: url, body: body, timestamp: timestamp });
-    var countReq = store.count();
-    countReq.onsuccess = function () {
-      if (countReq.result > MAX_QUEUE) {
-        var cursorReq = store.openCursor();
-        cursorReq.onsuccess = function (e) {
-          var cursor = e.target.result;
-          if (cursor) { cursor.delete(); }
-        };
-      }
-    };
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(STORE_NAME, "readwrite");
+      var store = tx.objectStore(STORE_NAME);
+      store.add({ url: url, body: body, timestamp: timestamp });
+      var countReq = store.count();
+      countReq.onsuccess = function () {
+        if (countReq.result > MAX_QUEUE) {
+          var cursorReq = store.openCursor();
+          cursorReq.onsuccess = function (e) {
+            var cursor = e.target.result;
+            if (cursor) { cursor.delete(); }
+          };
+        }
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = tx.onabort = function () { reject(tx.error); };
+    });
   }).catch(function (err) {
     console.error("observe sw: failed to queue request", err);
   });
@@ -54,8 +59,20 @@ function resend(db, item) {
 }
 
 // Resends the queue. The returned promise settles after every resend has, and rejects when any
-// entry is still queued, which is what makes a sync event retry later.
+// entry is still queued, which is what makes a sync event retry later. A sync and an online
+// event can overlap; they share one run, so no entry is read and posted twice.
+var flushing = null;
 function flushQueue() {
+  if (!flushing) {
+    flushing = startFlush().then(
+      function (v) { flushing = null; return v; },
+      function (e) { flushing = null; throw e; }
+    );
+  }
+  return flushing;
+}
+
+function startFlush() {
   return openDB().then(function (db) {
     return new Promise(function (resolve, reject) {
       var req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
