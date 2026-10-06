@@ -1,6 +1,6 @@
 # observe
 
-Deployment-agnostic observability middleware that runs in-process. Instrument Python/Go/JS apps with zero config: it injects error tracking, user feedback, and OTLP telemetry into the app it wraps.
+Deployment-agnostic observability middleware that runs in-process. Instrument Python apps with zero config: it injects error tracking, user feedback, and OTLP telemetry into the app it wraps.
 
 ## Quickstart
 
@@ -107,6 +107,8 @@ remote receiver such as switchboard's `/in/feedback`, sent with `token` as a bea
 false` when nothing collects the OTLP spans. `repo` is passed through in the feedback payload so the
 receiver knows where to file the issue. On a touch screen the floating trigger stays visible (it cannot
 be hovered); a site with its own button passes `button: false` and calls `window.__observe__.open()`.
+The feedback form reads the org token variables (`--bg`, `--card`, `--fg`, `--line`, `--muted`,
+`--font-sans`, `--shadow-overlay`) and falls back to the dark tokens.
 
 ```html
 <script>
@@ -155,7 +157,6 @@ adapter over it that only reads bodies and emits responses.
 | `src/observe/shim/observe.sw.js` | Service worker — offline queue, OTLP buffering |
 | `sinks/sentry/` | Sentry sink (separate package) |
 | `sinks/github/` | GitHub issue sink (separate package) |
-| `contrib/` | Unmaintained Go and Cloudflare Workers ports |
 
 ## Endpoints
 

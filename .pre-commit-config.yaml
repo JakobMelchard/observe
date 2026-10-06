@@ -16,7 +16,6 @@ repos:
     rev: v2.5.15
     hooks:
       - id: biome-ci
-        exclude: ^contrib/
   - repo: local
     hooks:
       # Needs the project env (uv sync --extra dev); CI runs it in the python job instead.

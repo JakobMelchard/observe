@@ -147,69 +147,83 @@
     try { localStorage.setItem(NAME_KEY, name); } catch (_e) { /* private window */ }
   }
 
-  function make(tag, css, props) {
+  // One stylesheet on the org token variables, so a page that loads tokens.css themes the form.
+  // The fallbacks are the dark tokens.
+  var CSS = [
+    ".observe-btn, .observe-panel { position: fixed; bottom: 1rem; right: 1rem; z-index: 99999;",
+    "  border: 1px solid var(--line, rgba(98, 114, 164, 0.25)); border-radius: 6px;",
+    "  background: var(--card, #15171f); color: var(--fg, #f8f8f2);",
+    "  font: 0.875rem/1.4 var(--font-sans, Satoshi, sans-serif); }",
+    // The trigger hides until hovered. A touch screen cannot hover, so there it stays visible.
+    ".observe-btn { opacity: 0; transition: opacity 0.2s; padding: 0.5rem 1rem; cursor: pointer; }",
+    "@media (hover: none) { .observe-btn { opacity: 1; } }",
+    ".observe-panel { display: none; width: 20rem; max-width: calc(100vw - 2rem); padding: 0.75rem;",
+    "  box-shadow: var(--shadow-overlay, 0 16px 64px rgba(0, 0, 0, 0.5)); }",
+    ".observe-panel label { display: block; margin: 0 0 0.25rem; color: var(--muted, #6272a4); }",
+    ".observe-panel select, .observe-panel textarea, .observe-panel input { width: 100%;",
+    "  box-sizing: border-box; margin: 0 0 0.5rem; padding: 0.35rem 0.5rem;",
+    "  border: 1px solid var(--line, rgba(98, 114, 164, 0.25)); border-radius: 4px;",
+    "  background: var(--bg, #0b0d10); color: var(--fg, #f8f8f2); font: inherit; }",
+    ".observe-panel textarea { height: 5rem; resize: vertical; }",
+    ".observe-row { display: flex; gap: 0.5rem; align-items: center; }",
+    ".observe-row span { flex: 1; color: var(--muted, #6272a4); }",
+    ".observe-row button { padding: 0.35rem 0.7rem; border: 1px solid var(--line, rgba(98, 114, 164, 0.25));",
+    "  border-radius: 4px; background: none; color: var(--fg, #f8f8f2); cursor: pointer; font: inherit; }",
+    ".observe-row .observe-send { background: var(--fg, #f8f8f2); color: var(--bg, #0b0d10); }",
+  ].join("\n");
+
+  // A constructed sheet is not inline style, so a CSP without 'unsafe-inline' lets it through.
+  function addStyles() {
+    var sheet = document.adoptedStyleSheets && window.CSSStyleSheet ? new CSSStyleSheet() : null;
+    if (sheet) {
+      sheet.replaceSync(CSS);
+      document.adoptedStyleSheets = document.adoptedStyleSheets.concat(sheet);
+      return;
+    }
+    var style = document.createElement("style");
+    style.textContent = CSS;
+    document.head.appendChild(style);
+  }
+
+  function make(tag, cls, props) {
     var el = document.createElement(tag);
-    el.style.cssText = css;
+    if (cls) el.className = cls;
     Object.keys(props || {}).forEach(function (k) { el[k] = props[k]; });
     return el;
   }
 
   whenReady(function () {
-    var dark = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
-    var bg = dark ? "#1f1f24" : "#ffffff";
-    var fg = dark ? "#e8e8e4" : "#111111";
-    var line = dark ? "#44444c" : "#888888";
-    var anchor = "position:fixed;bottom:1rem;right:1rem;z-index:99999;";
-    var field =
-      "width:100%;box-sizing:border-box;margin:0 0 0.5rem;padding:0.35rem 0.5rem;" +
-      "border:1px solid " + line + ";border-radius:4px;background:" + bg + ";color:" + fg + ";" +
-      "font:inherit;";
+    addStyles();
 
-    // The trigger hides until hovered. A touch screen cannot hover, so there it stays visible;
-    // a site with its own button (cfg.button === false) gets none and calls window.__observe__.open().
-    var hover = !(window.matchMedia && matchMedia("(hover: none)").matches);
-    var idle = hover ? "0" : "1";
-    var btn = make("button", anchor +
-      "opacity:" + idle + ";transition:opacity 0.2s;padding:0.5rem 1rem;border:1px solid " + line + ";" +
-      "border-radius:4px;background:" + bg + ";color:" + fg + ";cursor:pointer;font-size:0.875rem;",
-      { textContent: feedbackLabel, type: "button" });
+    // A site with its own button (cfg.button === false) gets none and calls window.__observe__.open().
+    var btn = make("button", "observe-btn", { textContent: feedbackLabel, type: "button" });
     btn.onmouseenter = function () { btn.style.opacity = "1"; };
     btn.onfocus = function () { btn.style.opacity = "1"; };
     document.body.addEventListener("mouseleave", function () {
-      if (panel.style.display === "none") btn.style.opacity = idle;
+      if (panel.style.display !== "block") btn.style.opacity = "";
     });
 
-    var panel = make("div", anchor +
-      "display:none;width:20rem;max-width:calc(100vw - 2rem);padding:0.75rem;" +
-      "border:1px solid " + line + ";border-radius:6px;background:" + bg + ";color:" + fg + ";" +
-      "font:0.875rem/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,0.25);",
-      { role: "dialog" });
+    var panel = make("div", "observe-panel", { role: "dialog" });
     panel.setAttribute("aria-label", feedbackLabel);
 
-    var category = make("select", field);
+    var category = make("select");
     CATEGORIES.forEach(function (c) {
       category.appendChild(make("option", "", { value: c, textContent: c }));
     });
-    var message = make("textarea", field + "height:5rem;resize:vertical;",
-      { placeholder: "What happened?", spellcheck: false });
-    var name = make("input", field,
+    var message = make("textarea", "", { placeholder: "What happened?", spellcheck: false });
+    var name = make("input", "",
       { type: "text", placeholder: "Your name (optional)", value: remembered() });
 
-    var status = make("span", "flex:1;opacity:0.7;");
-    var cancel = make("button", "padding:0.35rem 0.7rem;border:1px solid " + line + ";" +
-      "border-radius:4px;background:none;color:" + fg + ";cursor:pointer;font:inherit;",
-      { textContent: "Cancel", type: "button" });
-    var send = make("button", "padding:0.35rem 0.7rem;border:1px solid " + line + ";" +
-      "border-radius:4px;background:" + fg + ";color:" + bg + ";cursor:pointer;font:inherit;",
-      { textContent: "Send", type: "button" });
+    var status = make("span");
+    var cancel = make("button", "", { textContent: "Cancel", type: "button" });
+    var send = make("button", "observe-send", { textContent: "Send", type: "button" });
 
-    var row = make("div", "display:flex;gap:0.5rem;align-items:center;");
+    var row = make("div", "observe-row");
     row.appendChild(status);
     row.appendChild(cancel);
     row.appendChild(send);
 
-    panel.appendChild(make("label", "display:block;margin:0 0 0.25rem;opacity:0.7;",
-      { textContent: feedbackLabel }));
+    panel.appendChild(make("label", "", { textContent: feedbackLabel }));
     panel.appendChild(category);
     panel.appendChild(message);
     panel.appendChild(name);
@@ -223,9 +237,9 @@
     }
 
     function close() {
-      panel.style.display = "none";
+      panel.style.display = "";
       btn.style.display = "";
-      btn.style.opacity = idle;
+      btn.style.opacity = "";
       message.value = "";
     }
 

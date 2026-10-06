@@ -92,7 +92,7 @@ class TestTokenReuse:
         auth._expires = time.time() + 10
         auth._installation = 7
         monkeypatch.setattr(
-            AppAuth, "_post", lambda *a, **k: {"token": "ghs_fresh", "expires_at": ""}
+            AppAuth, "_call", lambda *a, **k: {"token": "ghs_fresh", "expires_at": ""}
         )
         assert auth.token() == "ghs_fresh"
 

@@ -52,7 +52,7 @@ def format_logs(entries: list[Any]) -> str:
             continue
         ts = entry.get("t", 0)
         stamp = datetime.fromtimestamp(ts / 1000, UTC).strftime("%H:%M:%S") if ts else "?"
-        detail = f" — {entry['detail']}" if entry.get("detail") else ""
+        detail = f": {entry['detail']}" if entry.get("detail") else ""
         lines.append(f"  {stamp} [{entry.get('app', '?')}] {entry.get('action', '?')}{detail}")
     return "\n".join(lines)
 
@@ -155,7 +155,7 @@ class GitHubSink:
         if enrichment and enrichment.get("description"):
             parts += [enrichment["description"], "", "---", ""]
 
-        user = _as_dict(event.user)
+        user = event.user
         lines = [
             f"Message: {event.message}",
             f"Category: {_category(event)}",
@@ -163,7 +163,7 @@ class GitHubSink:
         ]
         lines += [f"{k.capitalize()}: {v}" for k, v in user.items() if k != "category" and v]
 
-        context = _as_dict(event.context)
+        context = event.context
         if context:
             lines.append("\nContext:")
             for key, value in context.items():
@@ -207,8 +207,4 @@ class GitHubSink:
 
 
 def _category(event: FeedbackEvent) -> str:
-    return _as_dict(event.user).get("category") or "feedback"
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
+    return event.user.get("category") or "feedback"

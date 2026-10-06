@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from http import HTTPStatus
 from importlib.resources import files
 from urllib.parse import urlsplit
@@ -63,6 +64,13 @@ BINARY_EXT = frozenset(
 )
 
 
+class Kind(StrEnum):
+    SHIM = "shim"
+    CONFIG = "config"
+    FEEDBACK = "feedback"
+    OTLP = "otlp"
+
+
 @dataclass(frozen=True)
 class Route:
     """An observe endpoint matched from a request line.
@@ -72,7 +80,7 @@ class Route:
     (blocking vs. awaited), so the core never reads one itself.
     """
 
-    kind: str
+    kind: Kind
     needs_body: bool
     name: str = ""
 
@@ -158,8 +166,8 @@ class ObserveCore:
         )
         self._shims: dict[str, bytes] = {}
         self._rates = {
-            "feedback": RateLimit(cfg.feedback_per_minute),
-            "otlp": RateLimit(cfg.otlp_per_minute),
+            Kind.FEEDBACK: RateLimit(cfg.feedback_per_minute),
+            Kind.OTLP: RateLimit(cfg.otlp_per_minute),
         }
 
     def shim(self, name: str) -> bytes:
@@ -172,14 +180,14 @@ class ObserveCore:
         """Match a request line to an observe endpoint, or ``None`` to delegate."""
         for name in SHIMS:
             if path == PREFIX + name:
-                return Route("shim", False, name)
+                return Route(Kind.SHIM, False, name)
         if path == PREFIX + "config":
-            return Route("config", False)
+            return Route(Kind.CONFIG, False)
         if method == "POST":
             if path == PREFIX + "feedback":
-                return Route("feedback", True)
+                return Route(Kind.FEEDBACK, True)
             if path.startswith(PREFIX + "otlp"):
-                return Route("otlp", True)
+                return Route(Kind.OTLP, True)
         return None
 
     def refuse(self, route: Route, headers: Mapping[str, str], client: str) -> Reply | None:
@@ -209,18 +217,21 @@ class ObserveCore:
 
     def reply(self, route: Route, body: bytes = b"", content_type: str = "") -> Reply:
         """Produce the response for a matched route, pushing events as a side effect."""
-        if route.kind == "shim":
-            return Reply(200, JAVASCRIPT, self.shim(route.name), SHIM_HEADERS.get(route.name, ()))
-        if route.kind == "config":
-            return Reply(200, JSON, self.config_bytes)
-        # A body can outgrow the cap without declaring a length up front.
-        if self._too_large(len(body)):
-            return TOO_LARGE
-        if route.kind == "feedback":
-            self._push_feedback(_loads(body))
-        elif route.kind == "otlp" and body and "json" in content_type:
-            for event in otlp_to_errors(_loads(body)):
-                router.push_error(event)
+        match route.kind:
+            case Kind.SHIM:
+                return Reply(
+                    200, JAVASCRIPT, self.shim(route.name), SHIM_HEADERS.get(route.name, ())
+                )
+            case Kind.CONFIG:
+                return Reply(200, JSON, self.config_bytes)
+            # A body can outgrow the cap without declaring a length up front.
+            case _ if self._too_large(len(body)):
+                return TOO_LARGE
+            case Kind.FEEDBACK:
+                self._push_feedback(_loads(body))
+            case Kind.OTLP if body and "json" in content_type:
+                for event in otlp_to_errors(_loads(body)):
+                    router.push_error(event)
         return Reply(200, JSON, b"{}")
 
     def is_binary(self, path: str) -> bool:

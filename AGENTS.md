@@ -21,7 +21,6 @@ observe/
 │   └── sink/sink.py           # Event types + Sink protocol
 ├── sinks/sentry/              # Sentry sink package
 ├── sinks/github/              # GitHub issue sink package
-├── contrib/                   # Unmaintained Go / CF Workers ports
 ├── tests/
 │   ├── unit/test_core.py      # ObserveCore contract
 │   ├── unit/test_adapters.py  # ASGI + http.server adapters
@@ -83,4 +82,3 @@ linted by biome (`biome.jsonc`) as a prek hook, which CI runs too (`prek run --a
 
 - No protobuf OTLP support — JSON only. Non-JSON content types are ignored.
 - Service worker uses IndexedDB for the offline queue (no Cache API).
-- `contrib/` ports are not linted, typed, tested, or packaged.
