@@ -1,6 +1,10 @@
+import logging
+
 import sentry_sdk
 
 from observe.sink.sink import ErrorEvent, FeedbackEvent
+
+log = logging.getLogger(__name__)
 
 
 class SentrySink:
@@ -21,12 +25,16 @@ class SentrySink:
         )
 
     def push_feedback(self, event: FeedbackEvent) -> None:
-        sentry_sdk.capture_user_feedback(
-            {
-                "email": event.user.get("email", ""),
-                "name": event.user.get("name", ""),
-                "comments": event.message,
-            }
+        """Feedback is not forwarded.
+
+        sentry-sdk 2.x has no user feedback API (the old
+        ``capture_user_feedback`` is gone), and feedback already has a sink of
+        record in the GitHub issue. Sentry is for errors. Said once per
+        submission, so a Sentry-only setup does not drop feedback silently.
+        """
+        log.warning(
+            "SentrySink: feedback not forwarded, register a sink that keeps it: %r",
+            event.message[:80],
         )
 
 
