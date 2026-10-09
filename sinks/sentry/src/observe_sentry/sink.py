@@ -21,13 +21,12 @@ class SentrySink:
         )
 
     def push_feedback(self, event: FeedbackEvent) -> None:
-        sentry_sdk.capture_user_feedback(
-            {
-                "email": event.user.get("email", ""),
-                "name": event.user.get("name", ""),
-                "comments": event.message,
-            }
-        )
+        """Feedback is not forwarded.
+
+        sentry-sdk 2.x has no user feedback API (the old
+        ``capture_user_feedback`` is gone), and feedback already has a sink of
+        record in the GitHub issue. Sentry is for errors.
+        """
 
 
 def _parse_timestamp(ts: str) -> float | str | None:

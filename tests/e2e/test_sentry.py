@@ -6,11 +6,13 @@ Does NOT call Sentry API. Asserts shape only:
 - ErrorEvent.timestamp maps to event.timestamp (ISO 8601 or Unix ns // Sentry accepts both)
 - ErrorEvent.context maps to event.extra
 - ErrorEvent.trace_id / span_id map to event.contexts.trace
-- FeedbackEvent.message maps to user feedback comments
-- FeedbackEvent.user maps to user feedback email/name
+- FeedbackEvent is not forwarded: the SDK has no feedback API
 """
 
+import importlib
 import json
+import sys
+from unittest.mock import MagicMock
 
 import pytest
 from werkzeug.test import Client
@@ -224,33 +226,14 @@ class TestSentryErrorShape:
         assert sink.errors[0].timestamp == "1700000000000000000"
 
 
-class TestSentryFeedbackShape:
-    def test_message_is_not_empty(self, client, sink):
-        client.post(
-            "/__observe__/feedback",
-            data=json.dumps(
-                {
-                    "message": "Love this app!",
-                    "timestamp": "2025-06-26T12:00:00Z",
-                }
-            ),
-            content_type="application/json",
+class TestSentryFeedbackIsNotForwarded:
+    def test_the_sink_calls_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The SDK need not be installed here: a stand-in records every call."""
+        sdk = MagicMock()
+        monkeypatch.setitem(sys.modules, "sentry_sdk", sdk)
+        module = importlib.import_module("observe_sentry.sink")
+        monkeypatch.setattr(module, "sentry_sdk", sdk)
+        module.SentrySink().push_feedback(
+            FeedbackEvent(message="hi", timestamp="2025-01-01T00:00:00Z", context={}, user={})
         )
-        assert len(sink.feedback) == 1
-        assert sink.feedback[0].message == "Love this app!"
-
-    def test_user_fields_are_strings(self, client, sink):
-        client.post(
-            "/__observe__/feedback",
-            data=json.dumps(
-                {
-                    "message": "test",
-                    "timestamp": "2025-01-01T00:00:00Z",
-                    "user": {"email": "user@example.com", "name": "Test User"},
-                }
-            ),
-            content_type="application/json",
-        )
-        event = sink.feedback[0]
-        assert isinstance(event.user["email"], str)
-        assert isinstance(event.user["name"], str)
+        assert not sdk.method_calls

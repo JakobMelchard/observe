@@ -46,4 +46,4 @@ class FeedbackEvent:
 
 See `sinks/sentry/src/observe_sentry/sink.py`:
 - `ErrorEvent` → `sentry_sdk.capture_event()` with trace context
-- `FeedbackEvent` → `sentry_sdk.capture_user_feedback()`
+- `FeedbackEvent` → nothing; feedback belongs to the GitHub sink, Sentry is for errors
