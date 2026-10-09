@@ -14,6 +14,7 @@ FIELDS = {
     ("frontend", "feedback_label"): "feedback_label",
     ("frontend", "enrich_hook"): "enrich_hook",
     ("frontend", "register_sw"): "register_sw",
+    ("frontend", "button"): "button",
 }
 
 
@@ -30,6 +31,8 @@ class ObserveConfig:
     feedback_label: str = "Feedback"
     enrich_hook: str = "__observe_enrich__"
     register_sw: bool = True
+    #: Render the floating trigger. A site with its own button calls window.__observe__.open().
+    button: bool = True
 
 
 def load_config(path: str | Path | None = None) -> ObserveConfig:

@@ -81,6 +81,7 @@ def test_config_reply_shape(core):
         "feedbackLabel",
         "enrichHook",
         "registerSw",
+        "button",
     }
 
 
@@ -213,9 +214,10 @@ class TestInjectionOrder:
         assert page.index(b"__OBSERVE_CONFIG__") < page.index(b"observe.js")
 
     def test_options_reach_the_page(self):
-        core = ObserveCore(ObserveConfig(register_sw=False, feedback_label="Sag was"))
+        core = ObserveCore(ObserveConfig(register_sw=False, button=False, feedback_label="Sag was"))
         page = core.inject(b"<html><head></head></html>")
         assert b'"registerSw": false' in page
+        assert b'"button": false' in page
         assert b"Sag was" in page
 
 
