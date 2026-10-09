@@ -154,9 +154,9 @@
     "  border: 1px solid var(--line, rgba(98, 114, 164, 0.25)); border-radius: 6px;",
     "  background: var(--card, #15171f); color: var(--fg, #f8f8f2);",
     "  font: 0.875rem/1.4 var(--font-sans, Satoshi, sans-serif); }",
-    // The trigger hides until hovered. A touch screen cannot hover, so there it stays visible.
-    ".observe-btn { opacity: 0; transition: opacity 0.2s; padding: 0.5rem 1rem; cursor: pointer; }",
-    "@media (hover: none) { .observe-btn { opacity: 1; } }",
+    // Always visible: a trigger that only shows on hover is never found on a desktop and
+    // never shown on a touch screen.
+    ".observe-btn { padding: 0.5rem 1rem; cursor: pointer; }",
     ".observe-panel { display: none; width: 20rem; max-width: calc(100vw - 2rem); padding: 0.75rem;",
     "  box-shadow: var(--shadow-overlay, 0 16px 64px rgba(0, 0, 0, 0.5)); }",
     ".observe-panel label { display: block; margin: 0 0 0.25rem; color: var(--muted, #6272a4); }",
@@ -197,11 +197,6 @@
 
     // A site with its own button (cfg.button === false) gets none and calls window.__observe__.open().
     var btn = make("button", "observe-btn", { textContent: feedbackLabel, type: "button" });
-    btn.onmouseenter = function () { btn.style.opacity = "1"; };
-    btn.onfocus = function () { btn.style.opacity = "1"; };
-    document.body.addEventListener("mouseleave", function () {
-      if (panel.style.display !== "block") btn.style.opacity = "";
-    });
 
     var panel = make("div", "observe-panel", { role: "dialog" });
     panel.setAttribute("aria-label", feedbackLabel);
@@ -239,7 +234,6 @@
     function close() {
       panel.style.display = "";
       btn.style.display = "";
-      btn.style.opacity = "";
       message.value = "";
     }
 
