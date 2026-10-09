@@ -120,6 +120,7 @@ def test_config_json_shape(client):
     assert "feedbackLabel" in data
     assert "enrichHook" in data
     assert "registerSw" in data
+    assert data["button"] is True
 
 
 def test_binary_response_not_injected(client):

@@ -150,6 +150,7 @@ class ObserveCore:
                     "feedbackLabel": cfg.feedback_label,
                     "enrichHook": cfg.enrich_hook,
                     "registerSw": cfg.register_sw,
+                    "button": cfg.button,
                 }
             )
             .replace("<", "\\u003c")
