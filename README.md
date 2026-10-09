@@ -106,8 +106,7 @@ On a static site there is no middleware to inject the shim, so include `observe.
 `window.__OBSERVE_CONFIG__` before it loads. Two keys exist for that case: `feedbackEndpoint` (a
 remote receiver such as switchboard's `/in/feedback`, sent with `token` as a bearer) and `traces:
 false` when nothing collects the OTLP spans. `repo` is passed through in the feedback payload so the
-receiver knows where to file the issue. On a touch screen the floating trigger stays visible (it cannot
-be hovered); a site with its own button sets `button = false` (`button: false` on a static site) and
+receiver knows where to file the issue. The floating trigger is always visible; a site with its own button sets `button = false` (`button: false` on a static site) and
 calls `window.__observe__.open()`.
 The feedback form reads the org token variables (`--bg`, `--card`, `--fg`, `--line`, `--muted`,
 `--font-sans`, `--shadow-overlay`) and falls back to the dark tokens.
