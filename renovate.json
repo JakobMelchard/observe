@@ -1,4 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>JakobMelchard/.github//renovate/default"]
+  "extends": ["github>JakobMelchard/.github//renovate/default"],
+  "packageRules": [
+    {
+      "description": "One PR bumps the ruff hook and the locked ruff together, so the two never drift (#21).",
+      "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"],
+      "groupName": "ruff"
+    }
+  ]
 }
