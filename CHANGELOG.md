@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/JakobMelchard/observe/compare/v0.1.1...v0.2.0) (2026-10-11)
+
+
+### Miscellaneous Chores
+
+* release 0.2.0 ([e42bf09](https://github.com/JakobMelchard/observe/commit/e42bf09c292e0bd3dbe1876b455fe04fdb59b917))
+
 ## [0.1.1](https://github.com/JakobMelchard/observe/compare/v0.1.0...v0.1.1) (2026-10-11)
 
 
