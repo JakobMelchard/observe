@@ -82,3 +82,4 @@ linted by biome (`biome.jsonc`) as a prek hook, which CI runs too (`prek run --a
 
 - No protobuf OTLP support — JSON only. Non-JSON content types are ignored.
 - Service worker uses IndexedDB for the offline queue (no Cache API).
+- `observe.sw.js` leaves no globals so an app worker can `importScripts` it; keep it inside its IIFE.

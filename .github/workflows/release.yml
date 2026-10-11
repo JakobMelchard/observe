@@ -1,0 +1,17 @@
+name: release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  release-please:
+    uses: JakobMelchard/.github/.github/workflows/release.yml@bfaa9063ee9c867b43abdad960504803ac847aa0 # v1.3.0
+    # melchbot authors the release PR and creates the tag, so pull_request workflows run
+    # on the release PR. Its credentials come from Infisical over OIDC.
+    # A called workflow cannot be granted more than the caller holds; without
+    # this the run fails at startup before any step executes.
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
