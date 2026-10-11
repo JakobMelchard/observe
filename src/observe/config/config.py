@@ -30,7 +30,7 @@ class ObserveConfig:
     otlp_per_minute: int = 300
     feedback_label: str = "Feedback"
     enrich_hook: str = "__observe_enrich__"
-    register_sw: bool = True
+    register_sw: bool = False
     #: Render the floating trigger. A site with its own button calls window.__observe__.open().
     button: bool = True
 

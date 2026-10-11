@@ -9,4 +9,4 @@ otlp_per_minute = 300
 [frontend]
 feedback_label = "Feedback"
 enrich_hook = "__observe_enrich__"
-register_sw = true
+register_sw = false
