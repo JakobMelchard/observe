@@ -8,7 +8,7 @@
   var traces = cfg.traces !== false;
   var feedbackLabel = cfg.feedbackLabel || "Feedback";
   var enrichHook = cfg.enrichHook || "__observe_enrich__";
-  var registerSw = cfg.registerSw !== false;
+  var registerSw = cfg.registerSw === true;
 
   function enrich() {
     var fn = window[enrichHook];

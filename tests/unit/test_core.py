@@ -214,11 +214,16 @@ class TestInjectionOrder:
         assert page.index(b"__OBSERVE_CONFIG__") < page.index(b"observe.js")
 
     def test_options_reach_the_page(self):
-        core = ObserveCore(ObserveConfig(register_sw=False, button=False, feedback_label="Sag was"))
+        core = ObserveCore(ObserveConfig(register_sw=True, button=False, feedback_label="Sag was"))
         page = core.inject(b"<html><head></head></html>")
-        assert b'"registerSw": false' in page
+        assert b'"registerSw": true' in page
         assert b'"button": false' in page
         assert b"Sag was" in page
+
+
+def test_the_worker_is_not_registered_by_default():
+    assert ObserveConfig().register_sw is False
+    assert b'"registerSw": false' in ObserveCore(ObserveConfig()).config_bytes
 
 
 class TestServiceWorkerScope:

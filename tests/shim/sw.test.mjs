@@ -1,5 +1,6 @@
 // Node tests for the service worker. It runs in a vm context against a fake
-// IndexedDB that holds the queue in a Map, and a fake `fetch`.
+// IndexedDB that holds the queue in a Map, and a fake `fetch`. The queue is driven through the
+// worker's own events, the way an app worker that importScripts() it sees it.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -43,7 +44,7 @@ function fakeIndexedDB(rows) {
   return { open() { return request(db); } };
 }
 
-function load(fetch) {
+function load(fetch, host) {
   const rows = new Map();
   const listeners = {};
   const tags = [];
@@ -58,12 +59,38 @@ function load(fetch) {
     addEventListener(type, fn) { listeners[type] = fn; },
   };
   sw.self = sw;
-  vm.runInNewContext(SOURCE, sw);
+  sw.importScripts = function (url) {
+    assert.equal(url, "/__observe__/observe.sw.js");
+    vm.runInContext(SOURCE, sw);
+  };
+  vm.createContext(sw);
+  vm.runInContext(host || SOURCE, sw);
   return { sw: sw, rows: rows, listeners: listeners, tags: tags };
 }
 
 function offline() {
   return Promise.reject(new TypeError("Failed to fetch"));
+}
+
+// A POST that fails offline lands in the queue once the fetch event has finished.
+async function enqueue(worker, body) {
+  const waits = [];
+  const live = worker.sw.fetch;
+  worker.sw.fetch = offline;
+  worker.listeners.fetch({
+    request: new Request(OTLP, { method: "POST", body: body }),
+    respondWith(promise) { waits.push(promise); },
+    waitUntil(promise) { waits.push(promise); },
+  });
+  worker.sw.fetch = live;
+  await waits[0];
+  await Promise.all(waits);
+}
+
+function flush(worker) {
+  let waited;
+  worker.listeners.sync({ tag: "observe-flush", waitUntil(promise) { waited = promise; } });
+  return waited;
 }
 
 function bodies(worker) {
@@ -72,10 +99,10 @@ function bodies(worker) {
 
 test("queue entries survive a failed flush", async function () {
   const worker = load(offline);
-  await worker.sw.queueRequest(OTLP, "{}", "2026-01-01T00:00:00Z");
+  await enqueue(worker, "{}");
   assert.equal(worker.rows.size, 1);
 
-  await assert.rejects(worker.sw.flushQueue());
+  await assert.rejects(flush(worker));
   assert.equal(worker.rows.size, 1);
 });
 
@@ -85,10 +112,10 @@ test("only delivered entries leave the queue", async function () {
     sent.push(init.body);
     return init.body === "lost" ? offline() : Promise.resolve({ ok: true, status: 200 });
   });
-  await worker.sw.queueRequest(OTLP, "lost", "");
-  await worker.sw.queueRequest(OTLP, "delivered", "");
+  await enqueue(worker, "lost");
+  await enqueue(worker, "delivered");
 
-  await assert.rejects(worker.sw.flushQueue());
+  await assert.rejects(flush(worker));
   assert.deepEqual(sent, ["lost", "delivered"]);
   assert.deepEqual(bodies(worker), ["lost"]);
 });
@@ -98,10 +125,10 @@ test("an answer that a later try could change keeps the entry", async function (
     return Promise.resolve({ ok: false, status: Number(init.body) });
   });
   for (const status of ["400", "413", "429", "500", "503"]) {
-    await worker.sw.queueRequest(OTLP, status, "");
+    await enqueue(worker, status);
   }
 
-  await assert.rejects(worker.sw.flushQueue());
+  await assert.rejects(flush(worker));
   assert.deepEqual(bodies(worker), ["429", "500", "503"]);
 });
 
@@ -112,7 +139,7 @@ test("the sync event waits for the flush", async function () {
       setTimeout(function () { delivered = true; resolve({ ok: true, status: 200 }); }, 10);
     });
   });
-  await worker.sw.queueRequest(OTLP, "{}", "");
+  await enqueue(worker, "{}");
 
   let waited;
   worker.listeners.sync({ tag: "observe-flush", waitUntil(promise) { waited = promise; } });
@@ -150,18 +177,42 @@ test("overlapping flushes share one run and post each entry once", async functio
       setTimeout(function () { resolve({ ok: true, status: 200 }); }, 10);
     });
   });
-  await worker.sw.queueRequest(OTLP, "a", "");
-  await worker.sw.queueRequest(OTLP, "b", "");
+  await enqueue(worker, "a");
+  await enqueue(worker, "b");
 
-  const first = worker.sw.flushQueue();
-  const second = worker.sw.flushQueue();
+  const first = flush(worker);
+  const second = flush(worker);
   assert.equal(first, second);
   await Promise.all([first, second]);
   assert.deepEqual(sent.sort(), ["a", "b"]);
   assert.equal(worker.rows.size, 0);
 
   // A later flush is a new run.
-  await worker.sw.queueRequest(OTLP, "c", "");
-  await worker.sw.flushQueue();
+  await enqueue(worker, "c");
+  await flush(worker);
   assert.deepEqual(sent.sort(), ["a", "b", "c"]);
+});
+
+test("importScripts keeps the host worker's globals and serves the OTLP route", async function () {
+  const worker = load(offline, [
+    'function openDB() { return "host"; }',
+    'var flushing = "host";',
+    'importScripts("/__observe__/observe.sw.js");',
+  ].join("\n"));
+  assert.equal(worker.sw.openDB(), "host");
+  assert.equal(worker.sw.flushing, "host");
+
+  await enqueue(worker, '{"resourceSpans":[]}');
+  assert.deepEqual(bodies(worker), ['{"resourceSpans":[]}']);
+});
+
+test("requests outside the observe route are left to the host worker", function () {
+  const worker = load(offline);
+  let answered = false;
+  worker.listeners.fetch({
+    request: new Request("http://app.test/api", { method: "POST", body: "{}" }),
+    respondWith() { answered = true; },
+    waitUntil() {},
+  });
+  assert.equal(answered, false);
 });

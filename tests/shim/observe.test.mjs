@@ -101,10 +101,18 @@ test("a URL object passed to fetch is reported by its href", async function () {
 test("a failed service worker registration is logged", async function () {
   const warnings = [];
   load(function () { return Promise.resolve({ ok: true }); }, {
-    __OBSERVE_CONFIG__: {},
+    __OBSERVE_CONFIG__: { registerSw: true },
     navigator: { serviceWorker: { register() { return Promise.reject(new Error("denied")); } } },
     console: { warn() { warnings.push(arguments); } },
   });
   await settle();
   assert.equal(warnings.length, 1);
+});
+
+test("no service worker is registered unless registerSw is set", function () {
+  let registered = 0;
+  const navigator = { serviceWorker: { register() { registered += 1; return Promise.resolve(); } } };
+  load(function () { return Promise.resolve({ ok: true }); }, { __OBSERVE_CONFIG__: {}, navigator: navigator });
+  load(function () { return Promise.resolve({ ok: true }); }, { __OBSERVE_CONFIG__: undefined, navigator: navigator });
+  assert.equal(registered, 0);
 });
