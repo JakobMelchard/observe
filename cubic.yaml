@@ -1,0 +1,21 @@
+# On-demand review: the "*" title filter suppresses every automatic review;
+# comment `@cubic-dev-ai review` on a PR to run one.
+version: 1
+reviews:
+  enabled: true
+  incremental_commits: false
+  ignore:
+    pr_titles:
+      - "*"
+    files:
+      - "**/*.lock"
+      - "**/package-lock.json"
+      - "**/pnpm-lock.yaml"
+      - "**/go.sum"
+      - "**/uv.lock"
+      - "**/Package.resolved"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/generated/**"
+      - "**/*.generated.*"
+      - "**/*.pb.go"

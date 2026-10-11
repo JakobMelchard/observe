@@ -37,7 +37,7 @@ observe/
 ## Commands
 
 ```sh
-uv sync --extra dev              # install deps
+uv sync              # install deps
 uv run pytest                    # run tests
 uv run mypy                      # type check (strict)
 uv run ruff check .              # lint

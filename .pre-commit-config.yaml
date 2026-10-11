@@ -18,7 +18,7 @@ repos:
       - id: biome-ci
   - repo: local
     hooks:
-      # Needs the project env (uv sync --extra dev); CI runs it in the python job instead.
+      # Needs the project env (uv sync); CI runs it in the python job instead.
       - id: mypy
         name: mypy (strict)
         entry: uv run mypy
@@ -27,6 +27,6 @@ repos:
         pass_filenames: false
         stages: [pre-push]
   - repo: https://github.com/JakobMelchard/.githooks
-    rev: v1.0.0
+    rev: v1.0.1
     hooks:
       - id: conventional-commit

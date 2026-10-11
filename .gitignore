@@ -1,10 +1,7 @@
-__pycache__/
-.ruff_cache/
-.pytest_cache/
-.venv/
-*.egg-info/
 .DS_Store
-*.pyc
-node_modules/
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 dist/
-build/

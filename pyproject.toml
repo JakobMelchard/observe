@@ -10,11 +10,11 @@ license = "MIT"
 requires-python = ">=3.11"
 dependencies = []
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "mypy>=1.11",
     "pytest>=8",
-    "ruff>=0.5",
+    "ruff>=0.16",
     "werkzeug>=3",
     # Exercises the GitHub App sink; the sink itself keeps it optional.
     "cryptography>=42",
@@ -27,11 +27,12 @@ where = ["src"]
 observe = ["shim/*.js", "py.typed"]
 
 [tool.ruff]
+extend = ".config/ruff.toml"
 line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ARG", "PTH", "RET", "TID", "PYI"]
+extend-select = ["W", "N", "SIM", "ARG", "PTH", "RET", "TID", "PYI"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test doubles must match the Sink / ASGI signatures they stand in for.

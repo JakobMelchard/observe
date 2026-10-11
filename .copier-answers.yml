@@ -1,0 +1,8 @@
+# Written by copier from JakobMelchard/template; do not edit. `copier update` (or Renovate's copier
+# PR) re-renders the templated files at a newer template tag and merges your changes in.
+_commit: v0.3.0
+_src_path: https://github.com/JakobMelchard/template.git
+description: Deployment-agnostic in-process observability middleware
+name: observe
+package: observe
+template: py

@@ -506,7 +506,7 @@ name = "observe"
 version = "0.1.0"
 source = { editable = "." }
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "cryptography" },
     { name = "mypy" },
@@ -516,14 +516,15 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=42" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
-    { name = "werkzeug", marker = "extra == 'dev'", specifier = ">=3" },
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "cryptography", specifier = ">=42" },
+    { name = "mypy", specifier = ">=1.11" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.16" },
+    { name = "werkzeug", specifier = ">=3" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "packaging"
