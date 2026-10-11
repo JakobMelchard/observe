@@ -1,0 +1,25 @@
+# On-demand review: only PRs carrying the "ai:coderabbit" label are reviewed automatically.
+reviews:
+  auto_review:
+    enabled: true
+    labels:
+      - "ai:coderabbit"
+    drafts: false
+    auto_incremental_review: false
+    ignore_usernames:
+      - "renovate[bot]"
+      - "github-actions[bot]"
+      - "melchbot[bot]"
+      - "feelzbot[bot]"
+  path_filters:
+    - "!**/*.lock"
+    - "!**/package-lock.json"
+    - "!**/pnpm-lock.yaml"
+    - "!**/go.sum"
+    - "!**/uv.lock"
+    - "!**/Package.resolved"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/generated/**"
+    - "!**/*.generated.*"
+    - "!**/*.pb.go"

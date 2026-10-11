@@ -1,0 +1,8 @@
+# Org ruff base, rendered by JakobMelchard/template. Consumer pyproject.toml:
+#   [tool.ruff]
+#   extend = ".config/ruff.toml"
+#   target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]
