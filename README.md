@@ -39,11 +39,11 @@ uv run ruff check . && uv run ruff format --check .
 
 ## Config
 
-`observe.toml` or `pyproject.toml` in the working directory; see `observe.toml.example`.
+`observe.toml` or `pyproject.toml` in the working directory; see `observe.toml.example`. In `pyproject.toml` the tables live under `tool.observe`, e.g. `[tool.observe.collector]`.
 
 | Key | Default | What |
 |-----|---------|------|
-| `collector.endpoint` | `/__observe__/otlp` | OTLP route |
+| `collector.endpoint` | `/__observe__/otlp` | where the browser sends spans; the built-in receiver only listens on the default, so change it only to point at a remote collector |
 | `collector.max_body_bytes` | `1048576` | larger POSTs get 413 |
 | `collector.same_site` | `true` | cross-site POSTs get 403 |
 | `collector.feedback_per_minute` | `10` | per client address, 429 beyond; `0` lifts it |
