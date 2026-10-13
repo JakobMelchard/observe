@@ -1,8 +1,9 @@
 """``http.server`` adapter for :class:`observe.core.ObserveCore`.
 
 Patches an existing ``BaseHTTPRequestHandler`` subclass in place.  Handlers
-write raw bytes straight to the socket, so injection needs the response
-buffered first — that is what :class:`_BufferedWfile` is for.
+write raw bytes straight to the socket, so injection needs an HTML response
+buffered first — that is what :class:`_BufferedWfile` is for. Anything else is
+streamed through as soon as its headers are known.
 """
 
 from __future__ import annotations
@@ -47,6 +48,9 @@ def patch_handler(handler_class: type[Any], config: ObserveConfig) -> None:
                 # What the base handler answers for a method it does not have.
                 handler.send_error(501, f"Unsupported method ({method!r})")
                 return
+            if core.is_binary(urlparse(handler.path).path):
+                original(handler)
+                return
             buf = _BufferedWfile(handler.wfile)
             handler.wfile = buf
             try:
@@ -74,47 +78,65 @@ def _emit(handler: Any, reply: Reply) -> None:
     handler.wfile.write(reply.body)
 
 
+def _header(lines: list[bytes], name: bytes) -> str:
+    for line in lines:
+        if line.lower().startswith(name + b":"):
+            return line.split(b":", 1)[1].strip().decode()
+    return ""
+
+
+def _is_html(head: bytes) -> bool:
+    lines = head.split(b"\r\n")
+    return "text/html" in _header(lines, b"content-type") and "chunked" not in _header(
+        lines, b"transfer-encoding"
+    )
+
+
 def _inject_raw(core: ObserveCore, raw: bytes) -> bytes:
     """Inject into a buffered raw HTTP response, rewriting Content-Length."""
     head, sep, body = raw.partition(b"\r\n\r\n")
-    if not sep:
-        return raw
-    lines = head.split(b"\r\n")
-    content_type = next(
-        (
-            line.split(b":", 1)[1].strip().decode()
-            for line in lines
-            if line.lower().startswith(b"content-type:")
-        ),
-        "",
-    )
-    if "text/html" not in content_type:
+    if not sep or not _is_html(head):
         return raw
     body = core.inject(body)
     lines = [
         f"Content-Length: {len(body)}".encode()
         if line.lower().startswith(b"content-length:")
         else line
-        for line in lines
+        for line in head.split(b"\r\n")
     ]
     return b"\r\n".join(lines) + b"\r\n\r\n" + body
 
 
 class _BufferedWfile(io.RawIOBase):
-    """Collects handler output so it can be rewritten before hitting the socket."""
+    """Holds an HTML response so it can be rewritten; passes anything else straight through."""
 
     def __init__(self, real: Any) -> None:
         self.real = real
         self._buf = io.BytesIO()
+        self._headers_done = False
+        self._passthrough = False
 
     def writable(self) -> bool:
         return True
 
     def write(self, b: Any) -> int:
-        return self._buf.write(b)
+        if self._passthrough:
+            self.real.write(b)
+            return len(b)
+        self._buf.write(b)
+        if not self._headers_done:
+            head, sep, _ = self._buf.getvalue().partition(b"\r\n\r\n")
+            if sep:
+                self._headers_done = True
+                if not _is_html(head):
+                    self._passthrough = True
+                    self.real.write(self._buf.getvalue())
+                    self._buf = io.BytesIO()
+        return len(b)
 
     def flush(self) -> None:
-        pass
+        if self._passthrough:
+            self.real.flush()
 
     def close(self) -> None:
         pass
