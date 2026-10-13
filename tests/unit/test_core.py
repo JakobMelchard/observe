@@ -491,3 +491,18 @@ def test_limits_load_from_toml(tmp_path):
     assert cfg.same_site is False
     assert cfg.feedback_per_minute == 3
     assert cfg.otlp_per_minute == 0
+
+
+def test_discovery_falls_back_from_observe_toml_to_pyproject_to_defaults(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert load_config().feedback_per_minute == 10
+    (tmp_path / "pyproject.toml").write_text("[tool.observe.collector]\nfeedback_per_minute = 3\n")
+    assert load_config().feedback_per_minute == 3
+    (tmp_path / "observe.toml").write_text("[collector]\nfeedback_per_minute = 5\n")
+    assert load_config().feedback_per_minute == 5
+
+
+def test_pyproject_ignores_top_level_tables(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[collector]\nfeedback_per_minute = 3\n")
+    assert load_config().feedback_per_minute == 10
