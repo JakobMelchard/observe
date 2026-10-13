@@ -41,6 +41,12 @@ SHIM_HEADERS = {"observe.sw.js": (("Service-Worker-Allowed", "/"),)}
 #: there, so `<header>` or a `<heading>` element is not mistaken for `<head>`.
 DOCUMENT_MARKERS = re.compile(rb"<(?:!doctype\s+html|html|head)[\s/>]")
 
+#: Where the shim goes, in order of preference: after the opening tag of one of these. Anything
+#: ahead of the doctype would put the browser in quirks mode.
+INSERT_AFTER = tuple(
+    re.compile(rb"<" + tag + rb"\b[^>]*>", re.IGNORECASE) for tag in (b"head", b"html", b"!doctype")
+)
+
 #: How far into a response to look for those markers.
 MARKER_WINDOW = 1024
 
@@ -253,8 +259,9 @@ class ObserveCore:
         """
         if not is_document(html):
             return html
-        if b"<head>" in html:
-            return html.replace(b"<head>", b"<head>" + self._tag, 1)
+        for pattern in INSERT_AFTER:
+            if m := pattern.search(html):
+                return html[: m.end()] + self._tag + html[m.end() :]
         return self._tag + html
 
     @staticmethod

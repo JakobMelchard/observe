@@ -115,6 +115,38 @@ def test_otlp_requires_json_content_type(core):
 
 
 @pytest.mark.parametrize(
+    "payload",
+    [
+        {"resourceSpans": "x"},
+        {"resourceSpans": [1]},
+        {"resourceSpans": [{"scopeSpans": "x"}]},
+        {"resourceSpans": [{"scopeSpans": [{"spans": [None]}]}]},
+        {"resourceLogs": [{"scopeLogs": [{"logRecords": "x"}]}]},
+    ],
+)
+def test_malformed_otlp_is_skipped(core, payload):
+    sink = Recorder()
+    router.register(sink)
+    reply = core.reply(core.route(OTLP, "POST"), json.dumps(payload).encode(), "application/json")
+    assert reply.status == 200
+    assert sink.errors == []
+
+
+def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
+    sink = Recorder()
+    router.register(sink)
+    attrs = [
+        7,
+        {"key": "a", "value": "x"},
+        {"key": "n", "value": {"intValue": "abc"}},
+        {"key": "ok", "value": {"intValue": "3"}},
+    ]
+    payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "s", "attributes": attrs}]}]}]}
+    core.reply(core.route(OTLP, "POST"), json.dumps(payload).encode(), "application/json")
+    assert [e.context for e in sink.errors] == [{"ok": 3}]
+
+
+@pytest.mark.parametrize(
     ("path", "binary"),
     [
         ("/logo.png", True),
@@ -149,9 +181,20 @@ def test_inject_after_head(core):
     assert out.index(b"observe.js") < out.index(b"<title>")
 
 
-def test_inject_prepends_when_a_document_has_no_head(core):
-    out = core.inject(b"<html><body>bare</body></html>")
-    assert out.startswith(b"<script")
+@pytest.mark.parametrize(
+    ("page", "after"),
+    [
+        (b'<!doctype html><html><head lang="en"><title>t</title>', b'<head lang="en">'),
+        (b"<!DOCTYPE html><HTML><HEAD><title>t</title>", b"<HEAD>"),
+        (b'<!doctype html><html lang="en"><body>bare</body></html>', b'<html lang="en">'),
+        (b"<!doctype html><body>bare</body>", b"<!doctype html>"),
+    ],
+)
+def test_inject_keeps_the_doctype_first(core, page, after):
+    out = core.inject(page)
+    assert out.startswith(page[:1] + b"!")
+    assert out.index(b"observe.js") > out.index(after)
+    assert out.count(b"observe.js") == 1
 
 
 @pytest.mark.parametrize(
@@ -459,3 +502,18 @@ def test_limits_load_from_toml(tmp_path):
     assert cfg.same_site is False
     assert cfg.feedback_per_minute == 3
     assert cfg.otlp_per_minute == 0
+
+
+def test_discovery_falls_back_from_observe_toml_to_pyproject_to_defaults(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert load_config().feedback_per_minute == 10
+    (tmp_path / "pyproject.toml").write_text("[tool.observe.collector]\nfeedback_per_minute = 3\n")
+    assert load_config().feedback_per_minute == 3
+    (tmp_path / "observe.toml").write_text("[collector]\nfeedback_per_minute = 5\n")
+    assert load_config().feedback_per_minute == 5
+
+
+def test_pyproject_ignores_top_level_tables(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[collector]\nfeedback_per_minute = 3\n")
+    assert load_config().feedback_per_minute == 10
