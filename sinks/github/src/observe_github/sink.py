@@ -51,7 +51,10 @@ def format_logs(entries: list[Any]) -> str:
             lines.append(f"  {entry}")
             continue
         ts = entry.get("t", 0)
-        stamp = datetime.fromtimestamp(ts / 1000, UTC).strftime("%H:%M:%S") if ts else "?"
+        try:
+            stamp = datetime.fromtimestamp(ts / 1000, UTC).strftime("%H:%M:%S") if ts else "?"
+        except (TypeError, ValueError, OverflowError, OSError):
+            stamp = "?"
         detail = f": {entry['detail']}" if entry.get("detail") else ""
         lines.append(f"  {stamp} [{entry.get('app', '?')}] {entry.get('action', '?')}{detail}")
     return "\n".join(lines)

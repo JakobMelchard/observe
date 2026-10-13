@@ -197,3 +197,7 @@ class TestFormatLogs:
 
     def test_missing_fields_become_question_marks(self):
         assert format_logs([{}]) == "  ? [?] ?"
+
+    @pytest.mark.parametrize("t", ["12:00", 1e30, -1e30, [1], float("nan")])
+    def test_an_unusable_timestamp_renders_as_unknown(self, t):
+        assert format_logs([{"t": t, "app": "a", "action": "b"}]) == "  ? [a] b"
