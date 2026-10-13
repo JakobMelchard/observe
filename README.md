@@ -39,7 +39,7 @@ uv run ruff check . && uv run ruff format --check .
 
 ## Config
 
-`observe.toml` or `pyproject.toml` in the working directory; see `observe.toml.example`.
+`observe.toml` or `pyproject.toml` in the working directory; see `observe.toml.example`. In `pyproject.toml` the tables live under `tool.observe`, e.g. `[tool.observe.collector]`.
 
 | Key | Default | What |
 |-----|---------|------|

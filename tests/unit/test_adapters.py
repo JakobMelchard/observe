@@ -18,7 +18,7 @@ import pytest
 from observe import router
 from observe.config.config import ObserveConfig
 from observe.middleware.asgi import ObserveASGIMiddleware
-from observe.middleware.http_server import patch_handler
+from observe.middleware.http_server import _BufferedWfile, patch_handler
 
 HTML = b"<!DOCTYPE html><html><head><title>t</title></head><body>hi</body></html>"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
@@ -184,6 +184,12 @@ class DemoHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/logo.png":
             self._reply(PNG, "image/png")
+        elif self.path == "/chunked":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(f"{len(HTML):x}\r\n".encode() + HTML + b"\r\n0\r\n\r\n")
         else:
             self._reply(HTML, "text/html")
 
@@ -218,6 +224,41 @@ def test_http_server_injects_html(http_url):
 def test_http_server_skips_binary(http_url):
     _, _, body = fetch(f"{http_url}/logo.png")
     assert body == PNG
+
+
+def test_http_server_leaves_chunked_html_alone(http_url):
+    _, _, body = fetch(f"{http_url}/chunked")
+    assert body == HTML
+
+
+class Sink:
+    def __init__(self):
+        self.written = []
+
+    def write(self, b):
+        self.written.append(bytes(b))
+
+    def flush(self):
+        pass
+
+
+def test_http_server_streams_a_non_html_response():
+    real = Sink()
+    out = _BufferedWfile(real)
+    out.write(b"HTTP/1.0 200 OK\r\nContent-Type: video/mp4\r\n\r\nfirst")
+    assert b"".join(real.written).endswith(b"first")
+    out.write(b"second")
+    assert real.written[-1] == b"second"
+    assert out.getvalue() == b""
+
+
+def test_http_server_holds_an_html_response_until_the_handler_returns():
+    real = Sink()
+    out = _BufferedWfile(real)
+    out.write(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n<html>")
+    out.write(b"</html>")
+    assert real.written == []
+    assert out.getvalue().endswith(b"<html></html>")
 
 
 def test_http_server_serves_shim(http_url):

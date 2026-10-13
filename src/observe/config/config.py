@@ -43,6 +43,8 @@ def load_config(path: str | Path | None = None) -> ObserveConfig:
         return cfg
 
     raw = tomllib.loads(found.read_text())
+    if found.name == "pyproject.toml":
+        raw = raw.get("tool", {}).get("observe", {})
     for (section, key), field in FIELDS.items():
         values = raw.get(section, {})
         if key in values:
