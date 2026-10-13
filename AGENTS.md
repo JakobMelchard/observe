@@ -1,85 +1,9 @@
-# observe: in-process observability middleware
+# observe
 
-Python library for instrumenting apps with error tracking and user feedback. Middleware wraps the app in the same process; pluggable sinks.
-
-## Structure
-
-```
-observe/
-├── src/observe/                # Core package
-│   ├── core.py                # ObserveCore — transport-agnostic half
-│   ├── router.py              # Global event router
-│   ├── config/config.py       # ObserveConfig + TOML loader
-│   ├── receiver/otlp.py       # OTLP → ErrorEvent converter
-│   ├── middleware/             # Thin adapters over ObserveCore
-│   │   ├── wsgi.py            # WSGI
-│   │   ├── asgi.py            # ASGI
-│   │   └── http_server.py     # stdlib http.server patch
-│   ├── shim/
-│   │   ├── observe.js         # Browser shim
-│   │   └── observe.sw.js      # Service worker buffer
-│   └── sink/sink.py           # Event types + Sink protocol
-├── sinks/sentry/              # Sentry sink package
-├── sinks/github/              # GitHub issue sink package
-├── tests/
-│   ├── unit/test_core.py      # ObserveCore contract
-│   ├── unit/test_adapters.py  # ASGI + http.server adapters
-│   ├── unit/test_middleware.py# WSGI adapter
-│   ├── unit/test_github_app.py# GitHub App auth
-│   ├── unit/test_shim.py      # Runs tests/shim through node, skipped without it
-│   ├── shim/*.test.mjs        # Shim + service worker, node:test with fakes
-│   ├── e2e/test_sentry.py     # Sink event shapes
-│   ├── e2e/test_github.py     # GitHub issue sink
-│   └── fixture/
-└── pyproject.toml
-```
-
-## Commands
-
-```sh
-uv sync              # install deps
-uv run pytest                    # run tests
-uv run mypy                      # type check (strict)
-uv run ruff check .              # lint
-uv run ruff format .             # format
-```
-
-CI runs all four on every PR (`.github/workflows/ci.yml`). The shim JS is
-linted by biome (`biome.jsonc`) as a prek hook, which CI runs too (`prek run --all-files`).
-
-## Key patterns
-
-- **ObserveCore is the single implementation.** Route matching, the config
-  blob, shim caching, script-tag injection, binary-extension skipping and OTLP
-  ingest live in `observe/core.py` and nowhere else. If you find yourself
-  writing any of them in a middleware, you are writing a bug.
-- **Middlewares are adapters.** They call `core.route()`, ask `core.refuse()`
-  before touching a body (size cap, same-site check, rate limit), read the
-  body the way their transport does, call `core.reply()`, emit a response,
-  and call `core.inject()` on 2xx HTML. Nothing else.
-- **Sink protocol**: implement `push_error(event)` + `push_feedback(event)`.
-- **Router**: singleton — register sinks, broadcasts events to all.
-- **Config**: auto-discovers `observe.toml` or `pyproject.toml` in cwd. The
-  `FIELDS` table maps `(section, key) → attribute`; add a row, not an `if`.
-- **No dependencies**: core package has zero runtime deps. Sinks may have them.
-
-## Adding a middleware
-
-1. Create `observe/middleware/<transport>.py`.
-2. Hold an `ObserveCore`. Implement only: read body, emit reply, intercept the
-   wrapped app's response, inject. Target under 100 lines.
-3. Add adapter tests in `tests/unit/test_adapters.py`.
-
-## Adding a sink
-
-1. Create `sinks/<name>/` with a `pyproject.toml` (copy `sinks/github/`).
-2. Implement the `Sink` protocol from `observe.sink.sink`.
-3. Add `sinks/<name>/src` to `pythonpath` and `mypy_path` in the root
-   `pyproject.toml` so tests and mypy see it.
-4. Add tests in `tests/e2e/`.
-
-## Known issues
-
-- No protobuf OTLP support — JSON only. Non-JSON content types are ignored.
-- Service worker uses IndexedDB for the offline queue (no Cache API).
-- `observe.sw.js` leaves no globals so an app worker can `importScripts` it; keep it inside its IIFE.
+- `ObserveCore` (`src/observe/core.py`) is the only place for route matching, the config blob, shim caching, script injection, binary-extension skipping and OTLP ingest. Never reimplement any of it in a middleware.
+- A middleware only reads the body, calls `core.route()`, `core.refuse()`, `core.reply()` and `core.inject()`, and emits the response. Keep it under 100 lines. Test it in `tests/unit/test_adapters.py`.
+- A sink implements `push_error(event)` and `push_feedback(event)` from `observe.sink.sink`. Copy `sinks/github/` for a new one, add `sinks/<name>/src` to `pythonpath` and `mypy_path` in the root `pyproject.toml`, test in `tests/e2e/`.
+- Config: add a row to `FIELDS` in `src/observe/config/config.py`, not an `if`.
+- The core package has zero runtime dependencies. Sinks may have them.
+- `observe.sw.js` must leave no globals so an app worker can `importScripts` it. Keep it inside its IIFE.
+- Run `uv run pytest`, `uv run mypy`, `uv run ruff check .` and `uv run ruff format --check .` before pushing. The shim JS is linted by biome via `prek run --all-files`.

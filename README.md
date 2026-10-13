@@ -53,26 +53,17 @@ uv run ruff check . && uv run ruff format --check .
 | `frontend.register_sw` | `false` | register `observe.sw.js` as the page's worker |
 | `frontend.button` | `true` | floating trigger; `false` and call `window.__observe__.open()` |
 
-## Service worker
+## Frontend
 
-A page has one worker per scope. To keep the offline OTLP buffer (IndexedDB, Background Sync) next to
-the app's own worker, import it there and leave `register_sw` off:
+Without middleware, set `window.__OBSERVE_CONFIG__` before loading `observe.js`: `feedbackEndpoint` and `token` for a remote receiver, `repo` for the issue target, `traces: false` to skip OTLP spans, `registerSw: true` to register the worker, `button: false` to drop the trigger.
+
+To share a page worker with the app, leave `register_sw` off and import it there:
 
 ```js
 importScripts("/__observe__/observe.sw.js");
 ```
 
-`register_sw = true` registers `observe.sw.js` on its own at scope `/`.
-
-## Static sites
-
-Without middleware, set `window.__OBSERVE_CONFIG__` before loading `observe.js`: `feedbackEndpoint`
-and `token` for a remote receiver, `repo` for the issue target, `traces: false` to skip OTLP spans,
-`registerSw: true` to register the worker, `button: false` to drop the trigger.
-
 ## Endpoints
-
-Every middleware serves these and delegates the rest to the app. 2xx HTML gets the shim after `<head>`.
 
 | Path | Method | What |
 |------|--------|------|
