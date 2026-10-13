@@ -115,6 +115,38 @@ def test_otlp_requires_json_content_type(core):
 
 
 @pytest.mark.parametrize(
+    "payload",
+    [
+        {"resourceSpans": "x"},
+        {"resourceSpans": [1]},
+        {"resourceSpans": [{"scopeSpans": "x"}]},
+        {"resourceSpans": [{"scopeSpans": [{"spans": [None]}]}]},
+        {"resourceLogs": [{"scopeLogs": [{"logRecords": "x"}]}]},
+    ],
+)
+def test_malformed_otlp_is_skipped(core, payload):
+    sink = Recorder()
+    router.register(sink)
+    reply = core.reply(core.route(OTLP, "POST"), json.dumps(payload).encode(), "application/json")
+    assert reply.status == 200
+    assert sink.errors == []
+
+
+def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
+    sink = Recorder()
+    router.register(sink)
+    attrs = [
+        7,
+        {"key": "a", "value": "x"},
+        {"key": "n", "value": {"intValue": "abc"}},
+        {"key": "ok", "value": {"intValue": "3"}},
+    ]
+    payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "s", "attributes": attrs}]}]}]}
+    core.reply(core.route(OTLP, "POST"), json.dumps(payload).encode(), "application/json")
+    assert [e.context for e in sink.errors] == [{"ok": 3}]
+
+
+@pytest.mark.parametrize(
     ("path", "binary"),
     [
         ("/logo.png", True),
