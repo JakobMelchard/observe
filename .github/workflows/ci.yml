@@ -10,10 +10,10 @@ on:
 
 jobs:
   ci:
-    uses: JakobMelchard/.github/.github/workflows/python.yml@e1ef2b10e7ee0c5426f78d63a4e9c6a0ce9b3fe9 # v1.6.0
+    uses: JakobMelchard/.github/.github/workflows/python.yml@4258fca96cbd14e90054debed585f9cf8aad04f7 # v2.1.0
     with:
       python-version: "3.11"
       lint-cmd: "ruff check . && uv run ruff format --check . && uv run mypy"
 
   hooks:
-    uses: JakobMelchard/.github/.github/workflows/hooks.yml@e1ef2b10e7ee0c5426f78d63a4e9c6a0ce9b3fe9 # v1.6.0
+    uses: JakobMelchard/.github/.github/workflows/hooks.yml@4258fca96cbd14e90054debed585f9cf8aad04f7 # v2.1.0
