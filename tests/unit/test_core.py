@@ -181,9 +181,20 @@ def test_inject_after_head(core):
     assert out.index(b"observe.js") < out.index(b"<title>")
 
 
-def test_inject_prepends_when_a_document_has_no_head(core):
-    out = core.inject(b"<html><body>bare</body></html>")
-    assert out.startswith(b"<script")
+@pytest.mark.parametrize(
+    ("page", "after"),
+    [
+        (b'<!doctype html><html><head lang="en"><title>t</title>', b'<head lang="en">'),
+        (b"<!DOCTYPE html><HTML><HEAD><title>t</title>", b"<HEAD>"),
+        (b'<!doctype html><html lang="en"><body>bare</body></html>', b'<html lang="en">'),
+        (b"<!doctype html><body>bare</body>", b"<!doctype html>"),
+    ],
+)
+def test_inject_keeps_the_doctype_first(core, page, after):
+    out = core.inject(page)
+    assert out.startswith(page[:1] + b"!")
+    assert out.index(b"observe.js") > out.index(after)
+    assert out.count(b"observe.js") == 1
 
 
 @pytest.mark.parametrize(
