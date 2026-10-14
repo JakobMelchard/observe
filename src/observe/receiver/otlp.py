@@ -60,7 +60,7 @@ def _extract_attrs(items: Any) -> dict[str, Any]:
         if "stringValue" in val:
             result[key] = val["stringValue"]
         elif "intValue" in val:
-            with contextlib.suppress(TypeError, ValueError):
+            with contextlib.suppress(TypeError, ValueError, OverflowError):
                 result[key] = int(val["intValue"])
         elif "doubleValue" in val:
             result[key] = val["doubleValue"]
