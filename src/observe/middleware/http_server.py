@@ -51,7 +51,7 @@ def patch_handler(handler_class: type[Any], config: ObserveConfig) -> None:
             if core.is_binary(urlparse(handler.path).path):
                 original(handler)
                 return
-            buf = _BufferedWfile(handler.wfile)
+            buf = _BufferedWfile(handler.wfile, core)
             handler.wfile = buf
             try:
                 original(handler)
@@ -85,17 +85,19 @@ def _header(lines: list[bytes], name: bytes) -> str:
     return ""
 
 
-def _is_html(head: bytes) -> bool:
+def _injectable(core: ObserveCore, head: bytes) -> bool:
     lines = head.split(b"\r\n")
-    return "text/html" in _header(lines, b"content-type") and "chunked" not in _header(
-        lines, b"transfer-encoding"
+    parts = lines[0].split()
+    status = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    return core.should_inject(status, _header(lines, b"content-type")) and (
+        "chunked" not in _header(lines, b"transfer-encoding")
     )
 
 
 def _inject_raw(core: ObserveCore, raw: bytes) -> bytes:
     """Inject into a buffered raw HTTP response, rewriting Content-Length."""
     head, sep, body = raw.partition(b"\r\n\r\n")
-    if not sep or not _is_html(head):
+    if not sep or not _injectable(core, head):
         return raw
     body = core.inject(body)
     lines = [
@@ -110,8 +112,9 @@ def _inject_raw(core: ObserveCore, raw: bytes) -> bytes:
 class _BufferedWfile(io.RawIOBase):
     """Holds an HTML response so it can be rewritten; passes anything else straight through."""
 
-    def __init__(self, real: Any) -> None:
+    def __init__(self, real: Any, core: ObserveCore) -> None:
         self.real = real
+        self._core = core
         self._buf = io.BytesIO()
         self._headers_done = False
         self._passthrough = False
@@ -128,7 +131,7 @@ class _BufferedWfile(io.RawIOBase):
             head, sep, _ = self._buf.getvalue().partition(b"\r\n\r\n")
             if sep:
                 self._headers_done = True
-                if not _is_html(head):
+                if not _injectable(self._core, head):
                     self._passthrough = True
                     self.real.write(self._buf.getvalue())
                     self._buf = io.BytesIO()
