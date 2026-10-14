@@ -1,7 +1,6 @@
 """Adapter tests for the ASGI and http.server middlewares.
 
-The WSGI adapter is covered by ``test_middleware.py``; these two had no
-coverage at all, which is how ``http_server`` drifted twice.
+The WSGI adapter is covered by ``test_middleware.py``.
 """
 
 import asyncio

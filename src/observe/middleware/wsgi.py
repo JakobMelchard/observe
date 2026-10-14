@@ -17,7 +17,6 @@ WSGIApp = Callable[[Environ, StartResponse], Iterable[bytes]]
 class ObserveMiddleware:
     def __init__(self, app: WSGIApp, config: ObserveConfig) -> None:
         self.app = app
-        self.cfg = config
         self.core = ObserveCore(config)
 
     def __call__(self, environ: Environ, start_response: StartResponse) -> Iterable[bytes]:
