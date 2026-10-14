@@ -1,6 +1,6 @@
 """Verify GitHubSink turns FeedbackEvents into the issue payload we expect.
 
-Does NOT call the GitHub API — ``_create_issue`` is captured, so these assert
+Does NOT call the GitHub API: ``_create_issue`` is captured, so these assert
 title/body/label composition and the enrich contract only.
 """
 

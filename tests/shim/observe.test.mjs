@@ -44,7 +44,7 @@ test("a failing endpoint does not cause a resend loop", async function () {
   let calls = 0;
   const shim = load(function () {
     calls += 1;
-    // Unfixed, the loop never yields to the event loop. Stop feeding it after
+    // With a loop, it never yields to the event loop. Stop feeding it after
     // a few rounds so the test fails instead of hanging.
     if (calls > 20) return new Promise(function () {});
     return Promise.reject(new TypeError("Failed to fetch"));

@@ -43,11 +43,6 @@ class Recorder:
         self.feedback.append(event)
 
 
-# --------------------------------------------------------------------------
-# ASGI
-# --------------------------------------------------------------------------
-
-
 async def demo_app(scope, receive, send):
     body, content_type = {
         "/": (HTML, b"text/html"),
@@ -163,11 +158,6 @@ def test_asgi_passes_through_non_http():
     app.app = lifespan
     asyncio.run(app({"type": "lifespan"}, None, None))
     assert seen == ["lifespan"]
-
-
-# --------------------------------------------------------------------------
-# http.server
-# --------------------------------------------------------------------------
 
 
 class DemoHandler(BaseHTTPRequestHandler):
@@ -315,10 +305,6 @@ def test_http_server_otlp_ignores_query_string(http_url):
     fetch(f"{http_url}/__observe__/otlp/v1/traces?x=1", json.dumps(payload).encode())
     assert sink.errors[0].message == "qs"
 
-
-# --------------------------------------------------------------------------
-# Ingest limits
-# --------------------------------------------------------------------------
 
 FEEDBACK = "/__observe__/feedback"
 LIMITS = {"max_body_bytes": 64, "feedback_per_minute": 2}

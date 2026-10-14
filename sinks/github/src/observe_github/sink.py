@@ -2,7 +2,7 @@
 
 ``push_feedback`` turns a :class:`~observe.sink.sink.FeedbackEvent` into a
 GitHub issue.  An optional ``enrich`` callable may supply a title, a leading
-description, and a label — the sink never knows what produced them, so an
+description, and a label. The sink never knows what produced them, so an
 LLM, a heuristic, or nothing at all can be swapped in at registration time.
 """
 
@@ -66,8 +66,8 @@ class GitHubSink:
     Credentials come from the environment unless passed. A GitHub App is
     preferred over a personal token: it is scoped to the repositories it is
     installed on and belongs to no one's account. Set ``GITHUB_APP_ID`` and
-    ``GITHUB_APP_PRIVATE_KEY`` (needs the ``app`` extra), or ``GITHUB_TOKEN``
-    — or pass them, which is what a deployment whose secrets are named after
+    ``GITHUB_APP_PRIVATE_KEY`` (needs the ``app`` extra), or ``GITHUB_TOKEN``,
+    or pass them, which is what a deployment whose secrets are named after
     its own bot will want.
 
     Args:
@@ -121,7 +121,7 @@ class GitHubSink:
             return ""
 
     def push_error(self, event: ErrorEvent) -> None:
-        """Errors do not open issues — only feedback does."""
+        """Errors do not open issues; only feedback does."""
 
     def push_feedback(self, event: FeedbackEvent) -> None:
         if not self._repo:

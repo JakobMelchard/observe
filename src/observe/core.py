@@ -1,6 +1,6 @@
 """Transport-agnostic observe request handling.
 
-Every middleware — WSGI, ASGI, ``http.server`` — is a thin adapter over
+Every middleware (WSGI, ASGI, ``http.server``) is a thin adapter over
 :class:`ObserveCore`.  The core owns the parts that do not depend on the
 transport: which paths belong to observe, what each one replies, which
 responses get the browser shim injected, and how OTLP payloads reach the
@@ -82,7 +82,7 @@ class Route:
     """An observe endpoint matched from a request line.
 
     ``needs_body`` tells the adapter whether to read the request body before
-    calling :meth:`ObserveCore.reply` — adapters read bodies differently
+    calling :meth:`ObserveCore.reply`. Adapters read bodies differently
     (blocking vs. awaited), so the core never reads one itself.
     """
 
@@ -163,8 +163,8 @@ class ObserveCore:
             .encode()
         )
         # Config first. The shim is a classic script, so it runs the moment
-        # it loads — before the parser reaches anything after it. Injected the
-        # other way round, every option silently fell back to its default.
+        # it loads, before the parser reaches anything after it. Injected the
+        # other way round, every option would silently fall back to its default.
         self._tag = (
             b"<script>window.__OBSERVE_CONFIG__ = "
             + self.config_bytes
