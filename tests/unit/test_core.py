@@ -7,7 +7,7 @@ import pytest
 
 from observe import router
 from observe.config.config import ObserveConfig, load_config
-from observe.core import JAVASCRIPT, JSON, ObserveCore, RateLimit
+from observe.core import DAY, JAVASCRIPT, JSON, ObserveCore, RateLimit
 
 
 @pytest.fixture(autouse=True)
@@ -370,10 +370,14 @@ FEEDBACK = "/__observe__/feedback"
 OTLP = "/__observe__/otlp/v1/traces"
 
 
+#: What a browser sends with a same-origin fetch POST.
+BROWSER = {"origin": "http://app.test", "host": "app.test"}
+
+
 def refuse(core, path=FEEDBACK, headers=None, client="10.0.0.1"):
     route = core.route(path, "POST")
     assert route is not None
-    return core.refuse(route, {"content-length": "2", **(headers or {})}, client)
+    return core.refuse(route, {"content-length": "2", **BROWSER, **(headers or {})}, client)
 
 
 class TestBodyLimit:
@@ -414,7 +418,6 @@ class TestSameSite:
     @pytest.mark.parametrize(
         "headers",
         [
-            {},
             {"sec-fetch-site": "same-origin"},
             {"sec-fetch-site": "same-site"},
             {"sec-fetch-site": "none"},
@@ -425,8 +428,20 @@ class TestSameSite:
             {"origin": "http://[::1]:8000", "host": "[::1]:8000"},
         ],
     )
-    def test_same_site_and_non_browser_posts_pass(self, core, headers):
+    def test_same_site_posts_pass(self, core, headers):
         assert refuse(core, headers=headers) is None
+
+    def test_feedback_without_a_browser_header_is_refused(self, core):
+        route = core.route(FEEDBACK, "POST")
+        assert route is not None
+        reply = core.refuse(route, {"content-length": "2"}, "10.0.0.1")
+        assert reply is not None
+        assert reply.status == 403
+
+    def test_otlp_without_a_browser_header_passes(self, core):
+        route = core.route(OTLP, "POST")
+        assert route is not None
+        assert core.refuse(route, {"content-length": "2"}, "10.0.0.1") is None
 
     @pytest.mark.parametrize(
         "headers",
@@ -447,6 +462,9 @@ class TestSameSite:
     def test_the_check_can_be_switched_off(self):
         core = ObserveCore(ObserveConfig(same_site=False))
         assert refuse(core, headers={"sec-fetch-site": "cross-site"}) is None
+        route = core.route(FEEDBACK, "POST")
+        assert route is not None
+        assert core.refuse(route, {}, "10.0.0.1") is None
 
 
 class TestRateLimit:
@@ -480,6 +498,30 @@ class TestRateLimit:
         core = ObserveCore(ObserveConfig(feedback_per_minute=0))
         assert all(refuse(core) is None for _ in range(50))
 
+    def test_feedback_has_a_daily_cap_across_all_clients(self):
+        core = ObserveCore(ObserveConfig(feedback_per_day=2))
+        assert refuse(core, client="10.0.0.1") is None
+        assert refuse(core, client="10.0.0.2") is None
+        reply = refuse(core, client="10.0.0.3")
+        assert reply is not None
+        assert reply.status == 429
+        assert refuse(core, OTLP, client="10.0.0.3") is None
+
+    def test_a_client_over_its_limit_does_not_use_up_the_daily_cap(self):
+        core = ObserveCore(ObserveConfig(feedback_per_minute=1, feedback_per_day=2))
+        assert refuse(core, client="10.0.0.1") is None
+        assert all(refuse(core, client="10.0.0.1") is not None for _ in range(5))
+        assert refuse(core, client="10.0.0.2") is None
+
+    def test_the_daily_cap_resets_after_a_day(self):
+        now = [0.0]
+        limit = RateLimit(1, window=DAY, clock=lambda: now[0])
+        assert limit.allow("")
+        now[0] = DAY - 1
+        assert not limit.allow("")
+        now[0] = DAY
+        assert limit.allow("")
+
     def test_the_budget_comes_back_when_the_window_turns(self):
         now = [0.0]
         limit = RateLimit(1, clock=lambda: now[0])
@@ -498,12 +540,14 @@ def test_limits_load_from_toml(tmp_path):
         "max_body_bytes = 2048\n"
         "same_site = false\n"
         "feedback_per_minute = 3\n"
+        "feedback_per_day = 7\n"
         "otlp_per_minute = 0\n"
     )
     cfg = load_config(path)
     assert cfg.max_body_bytes == 2048
     assert cfg.same_site is False
     assert cfg.feedback_per_minute == 3
+    assert cfg.feedback_per_day == 7
     assert cfg.otlp_per_minute == 0
 
 
