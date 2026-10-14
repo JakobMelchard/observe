@@ -139,6 +139,7 @@ def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
         7,
         {"key": "a", "value": "x"},
         {"key": "n", "value": {"intValue": "abc"}},
+        {"key": "big", "value": {"intValue": float("inf")}},
         {"key": "ok", "value": {"intValue": "3"}},
     ]
     payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "s", "attributes": attrs}]}]}]}
