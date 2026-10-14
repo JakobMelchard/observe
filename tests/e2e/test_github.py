@@ -170,7 +170,9 @@ class TestEnrichContract:
 
 
 class TestNoOp:
-    def test_missing_token_skips(self, capture):
+    def test_missing_token_skips(self, capture, monkeypatch):
+        for var in ("GITHUB_TOKEN", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY"):
+            monkeypatch.delenv(var, raising=False)
         GitHubSink(token="", repo="o/r").push_feedback(event())
         assert capture == []
 
