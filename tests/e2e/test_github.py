@@ -34,17 +34,17 @@ def event(**kwargs):
 
 
 class TestIssueComposition:
-    def test_title_falls_back_to_category_and_message(self, capture):
+    def test_title_names_the_category_only(self, capture):
         sink().push_feedback(event(user={"category": "bug"}))
-        assert capture[0]["title"] == "[bug] button does nothing"
+        assert capture[0]["title"] == "[bug] User feedback"
 
     def test_category_defaults_to_feedback(self, capture):
         sink().push_feedback(event())
         assert capture[0]["title"].startswith("[feedback]")
 
-    def test_title_is_truncated(self, capture):
-        sink().push_feedback(event(message="x" * 500))
-        assert capture[0]["title"] == "[feedback] " + "x" * 120
+    def test_title_carries_no_client_text(self, capture):
+        sink().push_feedback(event(message=INJECTION, user={"category": INJECTION}))
+        assert capture[0]["title"] == "[feedback] User feedback"
 
     def test_body_carries_message_and_timestamp(self, capture):
         sink().push_feedback(event())
@@ -154,14 +154,14 @@ class TestEnrichContract:
 
     def test_enrich_returning_none_falls_back(self, capture):
         sink(enrich=lambda e: None).push_feedback(event())
-        assert capture[0]["title"] == "[feedback] button does nothing"
+        assert capture[0]["title"] == "[feedback] User feedback"
 
     def test_failing_enrich_still_creates_the_issue(self, capture):
         def boom(_):
             raise RuntimeError("ollama down")
 
         sink(enrich=boom).push_feedback(event())
-        assert capture[0]["title"] == "[feedback] button does nothing"
+        assert capture[0]["title"] == "[feedback] User feedback"
 
     def test_enrich_receives_the_event(self, capture):
         seen = []
