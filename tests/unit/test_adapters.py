@@ -1,7 +1,6 @@
 """Adapter tests for the ASGI and http.server middlewares.
 
-The WSGI adapter is covered by ``test_middleware.py``; these two had no
-coverage at all, which is how ``http_server`` drifted twice.
+The WSGI adapter is covered by ``test_middleware.py``.
 """
 
 import asyncio
@@ -18,6 +17,7 @@ import pytest
 
 from observe import router
 from observe.config.config import ObserveConfig
+from observe.core import ObserveCore
 from observe.middleware.asgi import ObserveASGIMiddleware
 from observe.middleware.http_server import _BufferedWfile, patch_handler
 
@@ -176,6 +176,12 @@ class DemoHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/logo.png":
             self._reply(PNG, "image/png")
+        elif self.path == "/missing":
+            self.send_response(404)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(HTML)))
+            self.end_headers()
+            self.wfile.write(HTML)
         elif self.path == "/chunked":
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
@@ -219,6 +225,13 @@ def test_http_server_skips_binary(http_url):
     assert body == PNG
 
 
+def test_http_server_leaves_error_pages_alone(http_url):
+    with pytest.raises(urllib.error.HTTPError) as err:
+        fetch(f"{http_url}/missing")
+    assert err.value.code == 404
+    assert err.value.read() == HTML
+
+
 def test_http_server_leaves_chunked_html_alone(http_url):
     _, _, body = fetch(f"{http_url}/chunked")
     assert body == HTML
@@ -237,7 +250,7 @@ class Sink:
 
 def test_http_server_streams_a_non_html_response():
     real = Sink()
-    out = _BufferedWfile(real)
+    out = _BufferedWfile(real, ObserveCore(ObserveConfig()))
     out.write(b"HTTP/1.0 200 OK\r\nContent-Type: video/mp4\r\n\r\nfirst")
     assert b"".join(real.written).endswith(b"first")
     out.write(b"second")
@@ -247,7 +260,7 @@ def test_http_server_streams_a_non_html_response():
 
 def test_http_server_holds_an_html_response_until_the_handler_returns():
     real = Sink()
-    out = _BufferedWfile(real)
+    out = _BufferedWfile(real, ObserveCore(ObserveConfig()))
     out.write(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n<html>")
     out.write(b"</html>")
     assert real.written == []
