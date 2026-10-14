@@ -251,7 +251,7 @@ class TestInjectionOrder:
 
     Anything the page must give it has to be in the document before the
     `<script src>` tag, or the shim sees `undefined` and quietly uses its
-    defaults — which is what made `register_sw=False` do nothing.
+    defaults, so an option like `register_sw=False` does nothing.
     """
 
     def test_config_is_set_before_the_shim_is_loaded(self):

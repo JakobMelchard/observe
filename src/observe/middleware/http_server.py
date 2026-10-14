@@ -2,7 +2,7 @@
 
 Patches an existing ``BaseHTTPRequestHandler`` subclass in place.  Handlers
 write raw bytes straight to the socket, so injection needs an HTML response
-buffered first — that is what :class:`_BufferedWfile` is for. Anything else is
+buffered first, which is what :class:`_BufferedWfile` is for. Anything else is
 streamed through as soon as its headers are known.
 """
 

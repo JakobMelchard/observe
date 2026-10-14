@@ -15,7 +15,6 @@
     return (typeof fn === "function") ? fn() : {};
   }
 
-  // 2. fetch wrapper — breadcrumb non-2xx, capture network errors
   var _fetch = window.fetch;
   window.fetch = function () {
     var args = arguments;
@@ -44,7 +43,6 @@
     });
   };
 
-  // 3. global errors
   // A listener, not window.onerror: the host page may have its own handler there.
   window.addEventListener("error", function (e) {
     tryToSendSpan("uncaught error", "error", {
@@ -63,7 +61,6 @@
     });
   });
 
-  // 4. feedback submission
   function submitFeedback(message, context, user) {
     var headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = "Bearer " + token;
@@ -118,15 +115,12 @@
     return id;
   }
 
-  // 6. service worker registration
   if (registerSw && "serviceWorker" in navigator) {
     navigator.serviceWorker.register("/__observe__/observe.sw.js", { scope: "/" }).catch(function (err) {
       console.warn("observe: service worker registration failed", err);
     });
   }
 
-  // 7. feedback trigger and form
-  //
   // The shim is injected into <head>, so it runs before <body> exists.
   // Everything that touches the DOM waits for it.
   function whenReady(fn) {

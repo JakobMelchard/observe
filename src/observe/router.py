@@ -1,7 +1,7 @@
 """Fan-out from the receiver to whatever sinks are registered.
 
-Delivery happens off the request thread. Sinks reach the network — opening a
-GitHub issue, scoring feedback with a local model — and a submission that
+Delivery happens off the request thread. Sinks reach the network (opening a
+GitHub issue, scoring feedback with a local model), and a submission that
 waits for all of that leaves the person staring at a spinner for as long as
 it takes. Nothing downstream reports back to the browser anyway.
 """

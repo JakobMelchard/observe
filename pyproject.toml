@@ -52,7 +52,7 @@ module = "sentry_sdk.*"
 ignore_missing_imports = true
 
 # Tests are checked, but test doubles and fixtures are not required to be
-# annotated — strict typing is for the code that ships.
+# annotated: strict typing is for the code that ships.
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
