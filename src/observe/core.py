@@ -111,18 +111,22 @@ TOO_MANY = Reply(429, JSON, b'{"error": "too many requests"}')
 
 #: Length of a rate-limit window, in seconds.
 WINDOW = 60.0
+DAY = 86_400.0
 
 
 class RateLimit:
-    """At most ``limit`` hits per client in each window; 0 lifts the limit.
+    """At most ``limit`` hits per client in each ``window`` seconds; 0 lifts the limit.
 
     One fixed window for all clients. The table is dropped when the window
     turns over, so it cannot grow without bound. Counts live in this process
     only, which is all a single-process server needs.
     """
 
-    def __init__(self, limit: int, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self, limit: int, window: float = WINDOW, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         self.limit = limit
+        self.window = window
         self._clock = clock
         self._start = clock()
         self._hits: dict[str, int] = {}
@@ -133,7 +137,7 @@ class RateLimit:
             return True
         with self._lock:
             now = self._clock()
-            if now - self._start >= WINDOW:
+            if now - self._start >= self.window:
                 self._start, self._hits = now, {}
             hits = self._hits.get(client, 0)
             if hits >= self.limit:
@@ -176,6 +180,9 @@ class ObserveCore:
             Kind.FEEDBACK: RateLimit(cfg.feedback_per_minute),
             Kind.OTLP: RateLimit(cfg.otlp_per_minute),
         }
+        # Every accepted feedback can become a GitHub issue; per-client limits do not bound a
+        # client that spreads over many addresses.
+        self._feedback_daily = RateLimit(cfg.feedback_per_day, window=DAY)
 
     def shim(self, name: str) -> bytes:
         """Return a shim's bytes, reading it from the package once."""
@@ -208,6 +215,10 @@ class ObserveCore:
             return None
         if self.cfg.same_site and _cross_site(headers):
             return CROSS_SITE
+        # Only the shim posts feedback, and a browser always sends one of these on a fetch POST.
+        browser = headers.get("sec-fetch-site") or headers.get("origin")
+        if self.cfg.same_site and route.kind is Kind.FEEDBACK and not browser:
+            return CROSS_SITE
         try:
             length = int(headers.get("content-length") or 0)
         except ValueError:
@@ -216,6 +227,8 @@ class ObserveCore:
         if length < 0 or self._too_large(length):
             return TOO_LARGE
         if not self._rates[route.kind].allow(client):
+            return TOO_MANY
+        if route.kind is Kind.FEEDBACK and not self._feedback_daily.allow(""):
             return TOO_MANY
         return None
 

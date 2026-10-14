@@ -10,6 +10,7 @@ import http.client
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -64,6 +65,7 @@ async def demo_app(scope, receive, send):
 def asgi_request(path, method="GET", body=b"", content_type=""):
     app = ObserveASGIMiddleware(demo_app, ObserveConfig())
     headers = [(b"content-type", content_type.encode())] if content_type else []
+    headers.append((b"sec-fetch-site", b"same-origin"))
     scope = {"type": "http", "path": path, "method": method, "headers": headers}
     sent = []
 
@@ -200,6 +202,7 @@ def fetch(url, data=None, content_type="application/json"):
     req = urllib.request.Request(url, data=data)
     if data is not None:
         req.add_header("Content-Type", content_type)
+        req.add_header("Sec-Fetch-Site", "same-origin")
     with urllib.request.urlopen(req, timeout=5) as resp:
         return resp.status, dict(resp.headers), resp.read()
 
@@ -316,7 +319,12 @@ def asgi_post(app, chunks, headers=()):
         "type": "http",
         "path": FEEDBACK,
         "method": "POST",
-        "headers": [(b"content-type", b"application/json"), *headers],
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"origin", b"http://app.test"),
+            (b"host", b"app.test"),
+            *headers,
+        ],
         "client": ("10.0.0.1", 50000),
     }
     pending = list(chunks)
@@ -384,7 +392,9 @@ def limited_url():
 
 
 def post_status(url, data=b"{}", headers=None):
-    req = urllib.request.Request(url, data=data, headers=headers or {})
+    origin = urllib.parse.urlsplit(url)
+    headers = {"Origin": f"{origin.scheme}://{origin.netloc}", **(headers or {})}
+    req = urllib.request.Request(url, data=data, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status
@@ -403,7 +413,7 @@ def test_http_server_closes_the_connection_on_an_unread_body(limited_url):
     """Left open, the unread body would be parsed as the next request."""
     host = limited_url.removeprefix("http://")
     conn = http.client.HTTPConnection(host, timeout=5)
-    conn.request("POST", FEEDBACK, body=b"x" * 65)
+    conn.request("POST", FEEDBACK, body=b"x" * 65, headers={"Sec-Fetch-Site": "same-origin"})
     resp = conn.getresponse()
     assert resp.status == 413
     resp.read()

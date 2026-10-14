@@ -10,6 +10,7 @@ FIELDS = {
     ("collector", "max_body_bytes"): "max_body_bytes",
     ("collector", "same_site"): "same_site",
     ("collector", "feedback_per_minute"): "feedback_per_minute",
+    ("collector", "feedback_per_day"): "feedback_per_day",
     ("collector", "otlp_per_minute"): "otlp_per_minute",
     ("frontend", "feedback_label"): "feedback_label",
     ("frontend", "enrich_hook"): "enrich_hook",
@@ -27,6 +28,8 @@ class ObserveConfig:
     same_site: bool = True
     #: Accepted POSTs per client address, counted per process.
     feedback_per_minute: int = 10
+    #: Accepted feedback per process per day, all clients together.
+    feedback_per_day: int = 50
     otlp_per_minute: int = 300
     feedback_label: str = "Feedback"
     enrich_hook: str = "__observe_enrich__"

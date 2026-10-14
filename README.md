@@ -45,8 +45,9 @@ uv run ruff check . && uv run ruff format --check .
 |-----|---------|------|
 | `collector.endpoint` | `/__observe__/otlp` | where the browser sends spans; the built-in receiver only listens on the default, so change it only to point at a remote collector |
 | `collector.max_body_bytes` | `1048576` | larger POSTs get 413 |
-| `collector.same_site` | `true` | cross-site POSTs get 403 |
+| `collector.same_site` | `true` | cross-site POSTs get 403, and so does feedback without `Origin` or `Sec-Fetch-Site` |
 | `collector.feedback_per_minute` | `10` | per client address, 429 beyond; `0` lifts it |
+| `collector.feedback_per_day` | `50` | all clients together, 429 beyond; `0` lifts it |
 | `collector.otlp_per_minute` | `300` | same |
 | `frontend.feedback_label` | `Feedback` | trigger text |
 | `frontend.enrich_hook` | `__observe_enrich__` | window function that adds context |

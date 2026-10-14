@@ -10,6 +10,9 @@ from observe.config.config import ObserveConfig
 from observe.middleware.wsgi import ObserveMiddleware
 from tests.fixture import app as fixture_app
 
+#: What a browser sends with a same-origin fetch POST; feedback without it is refused.
+SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
+
 
 @pytest.fixture(autouse=True)
 def reset_router():
@@ -157,6 +160,7 @@ def test_feedback_calls_router(client):
     router.register(TestSink())
     resp = client.post(
         "/__observe__/feedback",
+        headers=SAME_ORIGIN,
         data=json.dumps(
             {
                 "message": "test feedback",
@@ -226,6 +230,7 @@ def test_app_error_not_swallowed(client):
 def test_no_sink_registered_feedback_returns_200(client):
     resp = client.post(
         "/__observe__/feedback",
+        headers=SAME_ORIGIN,
         data=json.dumps({"message": "test"}),
         content_type="application/json",
     )
@@ -253,6 +258,7 @@ def test_multiple_sinks_called(client):
     router.register(Sink2())
     client.post(
         "/__observe__/feedback",
+        headers=SAME_ORIGIN,
         data=json.dumps({"message": "test"}),
         content_type="application/json",
     )
@@ -319,7 +325,9 @@ def limited():
 
 def test_oversized_post_is_refused(limited):
     client, events = limited
-    resp = client.post(FEEDBACK, data=b"x" * 65, content_type="application/json")
+    resp = client.post(
+        FEEDBACK, data=b"x" * 65, content_type="application/json", headers=SAME_ORIGIN
+    )
     assert resp.status_code == 413
     assert events == []
 
@@ -334,6 +342,7 @@ def test_oversized_post_is_refused_before_the_body_is_read():
         "PATH_INFO": FEEDBACK,
         "REQUEST_METHOD": "POST",
         "CONTENT_LENGTH": "65",
+        "HTTP_SEC_FETCH_SITE": "same-origin",
         "wsgi.input": Unreadable(),
     }
     started = []
@@ -356,6 +365,8 @@ def test_cross_site_post_is_refused(limited):
 
 def test_posts_that_come_too_fast_are_refused(limited):
     client, events = limited
-    statuses = [client.post(FEEDBACK, data=b"{}").status_code for _ in range(3)]
+    statuses = [
+        client.post(FEEDBACK, data=b"{}", headers=SAME_ORIGIN).status_code for _ in range(3)
+    ]
     assert statuses == [200, 200, 429]
     assert len(events) == 2

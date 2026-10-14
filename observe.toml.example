@@ -4,6 +4,7 @@ endpoint = "/__observe__/otlp"
 max_body_bytes = 1048576
 same_site = true
 feedback_per_minute = 10
+feedback_per_day = 50
 otlp_per_minute = 300
 
 [frontend]
