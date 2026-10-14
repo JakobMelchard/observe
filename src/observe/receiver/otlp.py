@@ -55,7 +55,7 @@ def _extract_attrs(items: Any) -> dict[str, Any]:
     for attr in _dicts(items):
         key = attr.get("key", "")
         val = attr.get("value")
-        if not isinstance(val, dict):
+        if not isinstance(key, str) or not isinstance(val, dict):
             continue
         if "stringValue" in val:
             result[key] = val["stringValue"]

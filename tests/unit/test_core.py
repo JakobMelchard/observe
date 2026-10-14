@@ -138,6 +138,8 @@ def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
     attrs = [
         7,
         {"key": "a", "value": "x"},
+        {"key": ["a"], "value": {"stringValue": "x"}},
+        {"key": {"a": 1}, "value": {"stringValue": "x"}},
         {"key": "n", "value": {"intValue": "abc"}},
         {"key": "big", "value": {"intValue": float("inf")}},
         {"key": "ok", "value": {"intValue": "3"}},
