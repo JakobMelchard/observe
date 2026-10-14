@@ -1,13 +1,19 @@
 """Unit tests for the transport-agnostic core shared by every middleware."""
 
+import importlib
 import json
 import threading
+import time
 
 import pytest
 
-from observe import router
+from observe import FeedbackEvent, router
 from observe.config.config import ObserveConfig, load_config
 from observe.core import DAY, JAVASCRIPT, JSON, ObserveCore, RateLimit
+
+# The package re-exports the router instance under the module's name.
+router_module = importlib.import_module("observe.router")
+Router = router_module.Router
 
 
 @pytest.fixture(autouse=True)
@@ -353,6 +359,66 @@ class TestDelivery:
         assert route is not None
         core.reply(route, b'{"message": "hi"}', JSON)
         assert seen == ["hi"]
+
+
+class Blocked:
+    """A sink that holds every delivery until released."""
+
+    def __init__(self):
+        self.release = threading.Event()
+        self.seen = []
+
+    def push_error(self, event): ...
+
+    def push_feedback(self, event):
+        self.release.wait(5)
+        self.seen.append(event.message)
+
+
+class TestQueue:
+    def test_deliveries_beyond_the_bound_are_dropped(self, monkeypatch):
+        monkeypatch.setattr(router_module, "MAX_PENDING", 3)
+        r = Router()
+        sink = Blocked()
+        r.register(sink)
+        for n in range(10):
+            r.push_feedback(FeedbackEvent(message=str(n), timestamp=""))
+        sink.release.set()
+        r.drain()
+        assert sorted(sink.seen) == ["0", "1", "2"]
+
+    def test_a_finished_delivery_frees_its_slot(self, monkeypatch):
+        monkeypatch.setattr(router_module, "MAX_PENDING", 1)
+        r = Router()
+        sink = Recorder()
+        r.register(sink)
+        for n in range(3):
+            r.push_feedback(FeedbackEvent(message=str(n), timestamp=""))
+            r.drain()
+        assert [e.message for e in sink.feedback] == ["0", "1", "2"]
+
+    def test_concurrent_pushes_share_one_pool(self, monkeypatch):
+        made = []
+
+        class SlowPool(router_module.ThreadPoolExecutor):
+            def __init__(self, *args, **kwargs):
+                made.append(self)
+                time.sleep(0.05)
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr(router_module, "ThreadPoolExecutor", SlowPool)
+        r = Router()
+        r.register(Recorder())
+        threads = [
+            threading.Thread(target=r.push_feedback, args=(FeedbackEvent("x", ""),))
+            for _ in range(8)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        r.drain()
+        assert len(made) == 1
 
 
 class TestInlineConfig:
