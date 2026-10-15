@@ -222,9 +222,32 @@ def test_app_passthrough_unchanged(client):
     assert json.loads(resp.data) == {}
 
 
-def test_app_error_not_swallowed(client):
-    resp = client.post("/fail")
-    assert resp.status_code == 500
+def test_app_error_not_swallowed():
+    def app(environ, start_response):
+        raise RuntimeError("boom")
+
+    _, chunks = call(app)
+    with pytest.raises(RuntimeError, match="boom"):
+        list(chunks)
+
+
+@pytest.mark.parametrize("content_type", ["text/event-stream", "text/html"])
+def test_iterable_error_not_swallowed_and_closed(content_type):
+    class Failing(Events):
+        def __iter__(self):
+            yield b"data: 0\n\n"
+            raise RuntimeError("boom")
+
+    events = Failing()
+
+    def app(environ, start_response):
+        start_response("200 OK", [("Content-Type", content_type)])
+        return events
+
+    _, chunks = call(app)
+    with pytest.raises(RuntimeError, match="boom"):
+        list(chunks)
+    assert events.closed
 
 
 def test_no_sink_registered_feedback_returns_200(client):

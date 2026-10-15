@@ -23,10 +23,6 @@ def app(environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
         return [b"{}"]
 
-    if path == "/fail" and method == "POST":
-        start_response("500 Internal Server Error", [("Content-Type", "application/json")])
-        return [b'{"error":"fail"}']
-
     if path == "/binary" and method == "GET":
         start_response("200 OK", [("Content-Type", "image/png"), ("Content-Length", str(len(PNG)))])
         return [PNG]
