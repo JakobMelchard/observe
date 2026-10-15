@@ -1,4 +1,4 @@
-(/** @param {ObserveWindow} win */ function (win) {
+/** @param {ObserveWindow} win */ (function (win) {
   var cfg = win.__OBSERVE_CONFIG__ || {};
   var endpoint = cfg.endpoint || "/__observe__/otlp";
   // A static site has no middleware behind it: feedback can go to a remote receiver with a
@@ -13,7 +13,7 @@
   /** @returns {Record<string, unknown>} what the page's enrich hook returns, or nothing */
   function enrich() {
     var fn = win[enrichHook];
-    return (typeof fn === "function") ? fn() : {};
+    return typeof fn === "function" ? fn() : {};
   }
 
   var _fetch = window.fetch;
@@ -27,23 +27,26 @@
       return _fetch.apply(this, args);
     }
     var start = Date.now();
-    return _fetch.apply(this, args).then(function (resp) {
-      if (!resp.ok) {
-        tryToSendSpan("fetch error", "warning", {
+    return _fetch
+      .apply(this, args)
+      .then(function (resp) {
+        if (!resp.ok) {
+          tryToSendSpan("fetch error", "warning", {
+            url: url,
+            status: resp.status,
+            duration: Date.now() - start,
+          });
+        }
+        return resp;
+      })
+      .catch(function (err) {
+        tryToSendSpan("fetch failed", "error", {
           url: url,
-          status: resp.status,
+          error: err.message,
           duration: Date.now() - start,
         });
-      }
-      return resp;
-    }).catch(function (err) {
-      tryToSendSpan("fetch failed", "error", {
-        url: url,
-        error: err.message,
-        duration: Date.now() - start,
+        throw err;
       });
-      throw err;
-    });
   };
 
   // A listener, not window.onerror: the host page may have its own handler there.
@@ -102,22 +105,28 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        resourceSpans: [{
-          resource: {},
-          scopeSpans: [{
-            scope: {},
-            spans: [{
-              name: name,
-              traceId: generateId(32),
-              spanId: generateId(16),
-              startTimeUnixNano: Date.now() * 1e6,
-              endTimeUnixNano: Date.now() * 1e6,
-              attributes: Object.keys(enriched).map(function (k) {
-                return { key: k, value: { stringValue: String(enriched[k]) } };
-              }),
-            }],
-          }],
-        }],
+        resourceSpans: [
+          {
+            resource: {},
+            scopeSpans: [
+              {
+                scope: {},
+                spans: [
+                  {
+                    name: name,
+                    traceId: generateId(32),
+                    spanId: generateId(16),
+                    startTimeUnixNano: Date.now() * 1e6,
+                    endTimeUnixNano: Date.now() * 1e6,
+                    attributes: Object.keys(enriched).map(function (k) {
+                      return { key: k, value: { stringValue: String(enriched[k]) } };
+                    }),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       }),
     }).catch(function () {
       // Left unhandled, a failed send would come back as an "unhandled rejection" span,
@@ -138,16 +147,21 @@
   }
 
   if (registerSw && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/__observe__/observe.sw.js", { scope: "/" }).catch(function (err) {
-      console.warn("observe: service worker registration failed", err);
-    });
+    navigator.serviceWorker
+      .register("/__observe__/observe.sw.js", { scope: "/" })
+      .catch(function (err) {
+        console.warn("observe: service worker registration failed", err);
+      });
   }
 
   // The shim is injected into <head>, so it runs before <body> exists.
   // Everything that touches the DOM waits for it.
   /** @param {() => void} fn runs once document.body exists */
   function whenReady(fn) {
-    if (document.body) { fn(); return; }
+    if (document.body) {
+      fn();
+      return;
+    }
     document.addEventListener("DOMContentLoaded", fn, { once: true });
   }
 
@@ -158,12 +172,20 @@
 
   /** @returns {string} the name the user gave last time */
   function remembered() {
-    try { return localStorage.getItem(NAME_KEY) || ""; } catch (_e) { return ""; }
+    try {
+      return localStorage.getItem(NAME_KEY) || "";
+    } catch (_e) {
+      return "";
+    }
   }
 
   /** @param {string} name kept for the next report */
   function remember(name) {
-    try { localStorage.setItem(NAME_KEY, name); } catch (_e) { /* private window */ }
+    try {
+      localStorage.setItem(NAME_KEY, name);
+    } catch (_e) {
+      /* private window */
+    }
   }
 
   // One stylesheet on the org token variables, so a page that loads tokens.css themes the form.
@@ -233,8 +255,11 @@
       category.appendChild(make("option", "", { value: c, textContent: c }));
     });
     var message = make("textarea", "", { placeholder: "What happened?", spellcheck: false });
-    var name = make("input", "",
-      { type: "text", placeholder: "Your name (optional)", value: remembered() });
+    var name = make("input", "", {
+      type: "text",
+      placeholder: "Your name (optional)",
+      value: remembered(),
+    });
 
     var status = make("span");
     var cancel = make("button", "", { textContent: "Cancel", type: "button" });
@@ -269,7 +294,10 @@
     /** Sends the form; an empty message only refocuses it. */
     function submit() {
       var text = message.value.trim();
-      if (!text) { message.focus(); return; }
+      if (!text) {
+        message.focus();
+        return;
+      }
       var who = name.value.trim();
       if (who) remember(who);
       send.disabled = true;
@@ -277,11 +305,17 @@
       submitFeedback(text, {}, { category: category.value, name: who }).then(
         function (resp) {
           send.disabled = false;
-          if (resp && !resp.ok) { status.textContent = "Could not send."; return; }
+          if (resp && !resp.ok) {
+            status.textContent = "Could not send.";
+            return;
+          }
           status.textContent = "Thanks.";
           setTimeout(close, 900);
         },
-        function () { send.disabled = false; status.textContent = "Could not send."; }
+        function () {
+          send.disabled = false;
+          status.textContent = "Could not send.";
+        },
       );
     }
 
@@ -289,7 +323,10 @@
     cancel.onclick = close;
     send.onclick = submit;
     panel.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { close(); return; }
+      if (e.key === "Escape") {
+        close();
+        return;
+      }
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
     });
 
@@ -322,4 +359,3 @@
  *   __observe__?: { open: () => void, close: () => void },
  * }} ObserveWindow
  */
-

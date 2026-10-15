@@ -1,5 +1,5 @@
 // The page may importScripts() this into the app's own worker, so nothing is left on the global scope.
-(/** @param {ServiceWorkerGlobalScope} sw */ function (sw) {
+/** @param {ServiceWorkerGlobalScope} sw */ (function (sw) {
   var MAX_QUEUE = 500;
   var DB_NAME = "observe-buffer";
   var STORE_NAME = "requests";
@@ -14,8 +14,12 @@
           db.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
         }
       };
-      req.onsuccess = function () { resolve(req.result); };
-      req.onerror = function () { reject(req.error); };
+      req.onsuccess = function () {
+        resolve(req.result);
+      };
+      req.onerror = function () {
+        reject(req.error);
+      };
     });
   }
 
@@ -27,26 +31,34 @@
    * @returns {Promise<void>} settles once queued, or once the failure is logged
    */
   function queueRequest(url, body, timestamp) {
-    return openDB().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE_NAME, "readwrite");
-        var store = tx.objectStore(STORE_NAME);
-        store.add({ url: url, body: body, timestamp: timestamp });
-        var countReq = store.count();
-        countReq.onsuccess = function () {
-          if (countReq.result <= MAX_QUEUE) return;
-          var cursorReq = store.openCursor();
-          cursorReq.onsuccess = function () {
-            var cursor = cursorReq.result;
-            if (cursor) { cursor.delete(); }
+    return openDB()
+      .then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE_NAME, "readwrite");
+          var store = tx.objectStore(STORE_NAME);
+          store.add({ url: url, body: body, timestamp: timestamp });
+          var countReq = store.count();
+          countReq.onsuccess = function () {
+            if (countReq.result <= MAX_QUEUE) return;
+            var cursorReq = store.openCursor();
+            cursorReq.onsuccess = function () {
+              var cursor = cursorReq.result;
+              if (cursor) {
+                cursor.delete();
+              }
+            };
           };
-        };
-        tx.oncomplete = function () { resolve(undefined); };
-        tx.onerror = tx.onabort = function () { reject(tx.error); };
+          tx.oncomplete = function () {
+            resolve(undefined);
+          };
+          tx.onerror = tx.onabort = function () {
+            reject(tx.error);
+          };
+        });
+      })
+      .catch(function (err) {
+        console.error("observe sw: failed to queue request", err);
       });
-    }).catch(function (err) {
-      console.error("observe sw: failed to queue request", err);
-    });
   }
 
   // Resends one queued entry and deletes it once the server gave a final answer. A network failure,
@@ -59,15 +71,22 @@
    */
   function resend(db, item) {
     var headers = { "Content-Type": "application/json" };
-    return fetch(item.url, { method: "POST", headers: headers, body: item.body }).then(function (resp) {
-      if (resp.status >= 500 || resp.status === 429) throw new Error("observe sw: resend answered " + resp.status);
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).delete(item.id);
-        tx.oncomplete = function () { resolve(undefined); };
-        tx.onerror = tx.onabort = function () { reject(tx.error); };
-      });
-    });
+    return fetch(item.url, { method: "POST", headers: headers, body: item.body }).then(
+      function (resp) {
+        if (resp.status >= 500 || resp.status === 429)
+          throw new Error("observe sw: resend answered " + resp.status);
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(STORE_NAME, "readwrite");
+          tx.objectStore(STORE_NAME).delete(item.id);
+          tx.oncomplete = function () {
+            resolve(undefined);
+          };
+          tx.onerror = tx.onabort = function () {
+            reject(tx.error);
+          };
+        });
+      },
+    );
   }
 
   // Resends the queue. The returned promise settles after every resend has, and rejects when any
@@ -79,8 +98,14 @@
   function flushQueue() {
     if (!flushing) {
       flushing = startFlush().then(
-        function (v) { flushing = null; return v; },
-        function (e) { flushing = null; throw e; }
+        function (v) {
+          flushing = null;
+          return v;
+        },
+        function (e) {
+          flushing = null;
+          throw e;
+        },
       );
     }
     return flushing;
@@ -89,15 +114,25 @@
   /** @returns {Promise<void>} rejects when any entry is still queued */
   function startFlush() {
     return openDB().then(function (db) {
-      return /** @type {Promise<QueuedRequest[]>} */ (new Promise(function (resolve, reject) {
-        var req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
-        req.onsuccess = function () { resolve(req.result); };
-        req.onerror = function () { reject(req.error); };
-      })).then(function (items) {
+      return /** @type {Promise<QueuedRequest[]>} */ (
+        new Promise(function (resolve, reject) {
+          var req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
+          req.onsuccess = function () {
+            resolve(req.result);
+          };
+          req.onerror = function () {
+            reject(req.error);
+          };
+        })
+      ).then(function (items) {
         var kept = 0;
-        return Promise.all(items.map(function (item) {
-          return resend(db, item).catch(function () { kept += 1; });
-        })).then(function () {
+        return Promise.all(
+          items.map(function (item) {
+            return resend(db, item).catch(function () {
+              kept += 1;
+            });
+          }),
+        ).then(function () {
           if (kept) throw new Error("observe sw: " + kept + " queued requests not resent");
         });
       });
@@ -113,27 +148,34 @@
     event.respondWith(
       fetch(event.request).catch(function () {
         event.waitUntil(
-          copy.text().then(function (body) {
-            return queueRequest(url.href, body, new Date().toISOString());
-          }).then(function () {
-            // Background Sync is not available in every browser.
-            var reg = /** @type {SyncRegistration} */ (sw.registration);
-            if (reg.sync) return reg.sync.register("observe-flush");
-          }).catch(function (err) {
-            console.error("observe sw: failed to register sync", err);
-          })
+          copy
+            .text()
+            .then(function (body) {
+              return queueRequest(url.href, body, new Date().toISOString());
+            })
+            .then(function () {
+              // Background Sync is not available in every browser.
+              var reg = /** @type {SyncRegistration} */ (sw.registration);
+              if (reg.sync) return reg.sync.register("observe-flush");
+            })
+            .catch(function (err) {
+              console.error("observe sw: failed to register sync", err);
+            }),
         );
         return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
-      })
+      }),
     );
   });
 
-  sw.addEventListener("sync", /** @param {Event} e */ function (e) {
-    var event = /** @type {SyncEvent} */ (e);
-    if (event.tag === "observe-flush") {
-      event.waitUntil(flushQueue());
-    }
-  });
+  sw.addEventListener(
+    "sync",
+    /** @param {Event} e */ function (e) {
+      var event = /** @type {SyncEvent} */ (e);
+      if (event.tag === "observe-flush") {
+        event.waitUntil(flushQueue());
+      }
+    },
+  );
 
   sw.addEventListener("online", function () {
     // Nothing retries here; what failed stays queued for the next flush.
