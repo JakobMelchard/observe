@@ -1,7 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
-  // Lint only: no formatter yet, and the shim keeps its ES5 syntax (var, function, concatenation).
-  "formatter": { "enabled": false },
+  // The shim keeps its ES5 syntax (var, function, concatenation); the formatter does not change syntax.
+  // release-please writes its manifest in its own layout.
+  "files": { "includes": ["**", "!.release-please-manifest.json", "!**/node_modules"] },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } },
   "assist": { "enabled": false },
   "linter": {
     "rules": {

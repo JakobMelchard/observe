@@ -7,7 +7,10 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
 
-const SOURCE = readFileSync(new URL("../../src/observe/shim/observe.sw.js", import.meta.url), "utf8");
+const SOURCE = readFileSync(
+  new URL("../../src/observe/shim/observe.sw.js", import.meta.url),
+  "utf8",
+);
 const OTLP = "http://app.test/__observe__/otlp/v1/traces";
 
 /**
@@ -34,7 +37,9 @@ function fakeIndexedDB(rows) {
   function request(result) {
     /** @type {FakeRequest} */
     const req = { result: result };
-    queueMicrotask(function () { if (req.onsuccess) req.onsuccess({ target: req }); });
+    queueMicrotask(function () {
+      if (req.onsuccess) req.onsuccess({ target: req });
+    });
     return req;
   }
   /** @returns {FakeTransaction} a transaction that commits on the next tick */
@@ -48,25 +53,53 @@ function fakeIndexedDB(rows) {
       objectStore() {
         return {
           /** @param {{ body: string }} value the entry */
-          add(value) { added.push(Object.assign({ id: nextId }, value)); return request(nextId++); },
-          count() { return request(rows.size); },
-          getAll() { return request(Array.from(rows.values())); },
-          clear() { rows.clear(); return request(); },
+          add(value) {
+            added.push(Object.assign({ id: nextId }, value));
+            return request(nextId++);
+          },
+          count() {
+            return request(rows.size);
+          },
+          getAll() {
+            return request(Array.from(rows.values()));
+          },
+          clear() {
+            rows.clear();
+            return request();
+          },
           /** @param {number} id the key */
-          delete(id) { deleted.push(id); return request(); },
+          delete(id) {
+            deleted.push(id);
+            return request();
+          },
         };
       },
     };
     // A write only shows once its transaction has committed.
     setTimeout(function () {
-      added.forEach(function (row) { rows.set(row.id, row); });
-      deleted.forEach(function (id) { rows.delete(id); });
+      added.forEach(function (row) {
+        rows.set(row.id, row);
+      });
+      deleted.forEach(function (id) {
+        rows.delete(id);
+      });
       if (tx.oncomplete) tx.oncomplete();
     }, 0);
     return tx;
   }
-  const db = { objectStoreNames: { contains() { return true; } }, transaction: transaction };
-  return { open() { return request(db); } };
+  const db = {
+    objectStoreNames: {
+      contains() {
+        return true;
+      },
+    },
+    transaction: transaction,
+  };
+  return {
+    open() {
+      return request(db);
+    },
+  };
 }
 
 /**
@@ -90,8 +123,17 @@ function load(fetch, host) {
     URL: URL,
     Response: Response,
     clients: { claim() {} },
-    registration: { sync: { register(/** @type {string} */ tag) { tags.push(tag); return Promise.resolve(); } } },
-    addEventListener(/** @type {string} */ type, /** @type {Listener} */ fn) { listeners[type] = fn; },
+    registration: {
+      sync: {
+        register(/** @type {string} */ tag) {
+          tags.push(tag);
+          return Promise.resolve();
+        },
+      },
+    },
+    addEventListener(/** @type {string} */ type, /** @type {Listener} */ fn) {
+      listeners[type] = fn;
+    },
   };
   sw.self = sw;
   sw.importScripts = function (/** @type {string} */ url) {
@@ -122,8 +164,12 @@ async function enqueue(worker, body) {
   worker.sw.fetch = offline;
   worker.listeners.fetch({
     request: new Request(OTLP, { method: "POST", body: body }),
-    respondWith(/** @type {Promise<unknown>} */ promise) { waits.push(promise); },
-    waitUntil(/** @type {Promise<unknown>} */ promise) { waits.push(promise); },
+    respondWith(/** @type {Promise<unknown>} */ promise) {
+      waits.push(promise);
+    },
+    waitUntil(/** @type {Promise<unknown>} */ promise) {
+      waits.push(promise);
+    },
   });
   worker.sw.fetch = live;
   await waits[0];
@@ -137,7 +183,12 @@ async function enqueue(worker, body) {
 function flush(worker) {
   /** @type {Promise<unknown>[]} */
   const waits = [];
-  worker.listeners.sync({ tag: "observe-flush", waitUntil(/** @type {Promise<unknown>} */ promise) { waits.push(promise); } });
+  worker.listeners.sync({
+    tag: "observe-flush",
+    waitUntil(/** @type {Promise<unknown>} */ promise) {
+      waits.push(promise);
+    },
+  });
   assert.equal(waits.length, 1);
   return waits[0];
 }
@@ -147,7 +198,9 @@ function flush(worker) {
  * @returns {string[]} the queued bodies in order
  */
 function bodies(worker) {
-  return Array.from(worker.rows.values()).map(function (row) { return row.body; });
+  return Array.from(worker.rows.values()).map(function (row) {
+    return row.body;
+  });
 }
 
 test("queue entries survive a failed flush", async function () {
@@ -190,7 +243,10 @@ test("the sync event waits for the flush", async function () {
   let delivered = false;
   const worker = load(function () {
     return new Promise(function (resolve) {
-      setTimeout(function () { delivered = true; resolve({ ok: true, status: 200 }); }, 10);
+      setTimeout(function () {
+        delivered = true;
+        resolve({ ok: true, status: 200 });
+      }, 10);
     });
   });
   await enqueue(worker, "{}");
@@ -211,8 +267,12 @@ test("a request that fails offline is queued and asks for a sync", async functio
   const responses = [];
   worker.listeners.fetch({
     request: new Request(OTLP, { method: "POST", body: '{"resourceSpans":[]}' }),
-    respondWith(/** @type {Promise<Response>} */ promise) { responses.push(promise); },
-    waitUntil(/** @type {Promise<unknown>} */ promise) { waits.push(promise); },
+    respondWith(/** @type {Promise<Response>} */ promise) {
+      responses.push(promise);
+    },
+    waitUntil(/** @type {Promise<unknown>} */ promise) {
+      waits.push(promise);
+    },
   });
 
   assert.equal(responses.length, 1);
@@ -230,7 +290,9 @@ test("overlapping flushes share one run and post each entry once", async functio
   const worker = load(function (_url, init) {
     sent.push(init.body);
     return new Promise(function (resolve) {
-      setTimeout(function () { resolve({ ok: true, status: 200 }); }, 10);
+      setTimeout(function () {
+        resolve({ ok: true, status: 200 });
+      }, 10);
     });
   });
   await enqueue(worker, "a");
@@ -250,11 +312,14 @@ test("overlapping flushes share one run and post each entry once", async functio
 });
 
 test("importScripts keeps the host worker's globals and serves the OTLP route", async function () {
-  const worker = load(offline, [
-    'function openDB() { return "host"; }',
-    'var flushing = "host";',
-    'importScripts("/__observe__/observe.sw.js");',
-  ].join("\n"));
+  const worker = load(
+    offline,
+    [
+      'function openDB() { return "host"; }',
+      'var flushing = "host";',
+      'importScripts("/__observe__/observe.sw.js");',
+    ].join("\n"),
+  );
   const openDB = /** @type {() => string} */ (worker.sw.openDB);
   assert.equal(openDB(), "host");
   assert.equal(worker.sw.flushing, "host");
@@ -268,7 +333,9 @@ test("requests outside the observe route are left to the host worker", function 
   let answered = false;
   worker.listeners.fetch({
     request: new Request("http://app.test/api", { method: "POST", body: "{}" }),
-    respondWith() { answered = true; },
+    respondWith() {
+      answered = true;
+    },
     waitUntil() {},
   });
   assert.equal(answered, false);

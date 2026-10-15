@@ -46,9 +46,14 @@ function element(tag) {
     value: "",
     textContent: "",
     className: "",
-    appendChild(child) { this.children.push(child); return child; },
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    },
     setAttribute() {},
-    addEventListener(type, fn) { listeners[type] = fn; },
+    addEventListener(type, fn) {
+      listeners[type] = fn;
+    },
     focus() {},
   };
 }
@@ -93,7 +98,9 @@ function load(config, fetch) {
     console: console,
     localStorage: {
       getItem: (/** @type {string} */ k) => stored[k] ?? null,
-      setItem: (/** @type {string} */ k, /** @type {string} */ v) => { stored[k] = v; },
+      setItem: (/** @type {string} */ k, /** @type {string} */ v) => {
+        stored[k] = v;
+      },
     },
     setTimeout() {},
     addEventListener() {},
@@ -127,7 +134,9 @@ function load(config, fetch) {
 }
 
 function settle() {
-  return new Promise(function (resolve) { setTimeout(resolve, 20); });
+  return new Promise(function (resolve) {
+    setTimeout(resolve, 20);
+  });
 }
 
 test("submit sends the feedback to the endpoint with the token", async function () {
@@ -135,7 +144,10 @@ test("submit sends the feedback to the endpoint with the token", async function 
   const calls = [];
   const form = load(
     { feedbackEndpoint: "https://recv.example/feedback", token: "secret", repo: "o/r" },
-    function (url, init) { calls.push([url, init]); return Promise.resolve({ ok: true }); },
+    function (url, init) {
+      calls.push([url, init]);
+      return Promise.resolve({ ok: true });
+    },
   );
   form.message.value = "  it broke  ";
   form.category.value = "bug";
@@ -158,7 +170,10 @@ test("submit sends the feedback to the endpoint with the token", async function 
 
 test("an empty message sends nothing", async function () {
   let calls = 0;
-  const form = load({}, function () { calls += 1; return Promise.resolve({ ok: true }); });
+  const form = load({}, function () {
+    calls += 1;
+    return Promise.resolve({ ok: true });
+  });
   form.message.value = "   ";
   click(form.send);
   await settle();
@@ -181,7 +196,9 @@ test("a refused or failed send shows an error", async function () {
 });
 
 test("button false builds no trigger, and open() still shows the panel", function () {
-  const form = load({ button: false }, function () { return Promise.resolve({ ok: true }); });
+  const form = load({ button: false }, function () {
+    return Promise.resolve({ ok: true });
+  });
   assert.equal(form.trigger, null);
   assert.equal(form.panel.style.display, undefined);
   const api = form.window.__observe__;
@@ -193,6 +210,8 @@ test("button false builds no trigger, and open() still shows the panel", functio
 });
 
 test("the trigger is on the page by default", function () {
-  const form = load({}, function () { return Promise.resolve({ ok: true }); });
+  const form = load({}, function () {
+    return Promise.resolve({ ok: true });
+  });
   assert.ok(form.trigger);
 });

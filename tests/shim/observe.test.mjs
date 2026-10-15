@@ -20,22 +20,25 @@ function load(fetch, extra) {
   /** @type {Record<string, Listener[]>} */
   const listeners = {};
   /** @type {Record<string, unknown> & { fetch: (input: unknown) => Promise<unknown> }} */
-  const window = Object.assign({
-    __OBSERVE_CONFIG__: { registerSw: false },
-    fetch: fetch,
-    navigator: {},
-    console: console,
-    // No body yet, so the feedback form never builds.
-    document: { body: null, addEventListener() {} },
-    /**
-     * @param {string} type event name
-     * @param {Listener} fn handler
-     */
-    addEventListener(type, fn) {
-      listeners[type] = listeners[type] || [];
-      listeners[type].push(fn);
+  const window = Object.assign(
+    {
+      __OBSERVE_CONFIG__: { registerSw: false },
+      fetch: fetch,
+      navigator: {},
+      console: console,
+      // No body yet, so the feedback form never builds.
+      document: { body: null, addEventListener() {} },
+      /**
+       * @param {string} type event name
+       * @param {Listener} fn handler
+       */
+      addEventListener(type, fn) {
+        listeners[type] = listeners[type] || [];
+        listeners[type].push(fn);
+      },
     },
-  }, extra);
+    extra,
+  );
   window.window = window;
   vm.runInNewContext(SOURCE, window);
   return { window: window, listeners: listeners };
@@ -54,13 +57,17 @@ function spans(calls) {
     const span = JSON.parse(call[1].body).resourceSpans[0].scopeSpans[0].spans[0];
     /** @type {Record<string, string>} */
     const attrs = {};
-    span.attributes.forEach(function (/** @type {Attribute} */ a) { attrs[a.key] = a.value.stringValue; });
+    span.attributes.forEach(function (/** @type {Attribute} */ a) {
+      attrs[a.key] = a.value.stringValue;
+    });
     return { name: span.name, attrs: attrs };
   });
 }
 
 function settle() {
-  return new Promise(function (resolve) { setTimeout(resolve, 50); });
+  return new Promise(function (resolve) {
+    setTimeout(resolve, 50);
+  });
 }
 
 test("a failing endpoint does not cause a resend loop", async function () {
@@ -74,7 +81,9 @@ test("a failing endpoint does not cause a resend loop", async function () {
   });
   // A browser hands every unhandled rejection back to the page.
   const report = function (/** @type {unknown} */ reason) {
-    shim.listeners.unhandledrejection.forEach(function (fn) { fn({ reason: reason }); });
+    shim.listeners.unhandledrejection.forEach(function (fn) {
+      fn({ reason: reason });
+    });
   };
   process.on("unhandledRejection", report);
   try {
@@ -90,10 +99,13 @@ test("the host page's onerror handler is kept and errors are still reported", fu
   /** @type {IArguments[]} */
   const calls = [];
   const host = function () {};
-  const shim = load(function () {
-    calls.push(arguments);
-    return Promise.resolve({ ok: true });
-  }, { onerror: host });
+  const shim = load(
+    function () {
+      calls.push(arguments);
+      return Promise.resolve({ ok: true });
+    },
+    { onerror: host },
+  );
   assert.equal(shim.window.onerror, host);
 
   const err = new Error("boom");
@@ -125,19 +137,51 @@ test("a URL object passed to fetch is reported by its href", async function () {
 
 test("a failed service worker registration is logged", async function () {
   const warnings = [];
-  load(function () { return Promise.resolve({ ok: true }); }, {
-    __OBSERVE_CONFIG__: { registerSw: true },
-    navigator: { serviceWorker: { register() { return Promise.reject(new Error("denied")); } } },
-    console: { warn() { warnings.push(arguments); } },
-  });
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    {
+      __OBSERVE_CONFIG__: { registerSw: true },
+      navigator: {
+        serviceWorker: {
+          register() {
+            return Promise.reject(new Error("denied"));
+          },
+        },
+      },
+      console: {
+        warn() {
+          warnings.push(arguments);
+        },
+      },
+    },
+  );
   await settle();
   assert.equal(warnings.length, 1);
 });
 
 test("no service worker is registered unless registerSw is set", function () {
   let registered = 0;
-  const navigator = { serviceWorker: { register() { registered += 1; return Promise.resolve(); } } };
-  load(function () { return Promise.resolve({ ok: true }); }, { __OBSERVE_CONFIG__: {}, navigator: navigator });
-  load(function () { return Promise.resolve({ ok: true }); }, { __OBSERVE_CONFIG__: undefined, navigator: navigator });
+  const navigator = {
+    serviceWorker: {
+      register() {
+        registered += 1;
+        return Promise.resolve();
+      },
+    },
+  };
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    { __OBSERVE_CONFIG__: {}, navigator: navigator },
+  );
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    { __OBSERVE_CONFIG__: undefined, navigator: navigator },
+  );
   assert.equal(registered, 0);
 });
