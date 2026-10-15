@@ -1,8 +1,12 @@
 """Verify GitHubSink turns FeedbackEvents into the issue payload we expect.
 
-Does NOT call the GitHub API: ``_create_issue`` is captured, so these assert
-title/body/label composition and the enrich contract only.
+Does NOT call the GitHub API: ``_create_issue`` is captured for composition and
+the enrich contract, and ``urlopen`` is faked where the request itself is checked.
 """
+
+import io
+import json
+import urllib.error
 
 import pytest
 from observe_github import GitHubSink, format_logs
@@ -203,3 +207,45 @@ class TestFormatLogs:
     @pytest.mark.parametrize("t", ["12:00", 1e30, -1e30, [1], float("nan")])
     def test_an_unusable_timestamp_renders_as_unknown(self, t):
         assert format_logs([{"t": t, "app": "a", "action": "b"}]) == "  ? [a] b"
+
+
+class TestCreateIssue:
+    @pytest.fixture
+    def opened(self, monkeypatch):
+        calls = []
+
+        def fake(request, timeout):
+            calls.append(request)
+            return io.BytesIO(b'{"html_url": "https://github.test/o/r/issues/7"}')
+
+        monkeypatch.setattr("urllib.request.urlopen", fake)
+        return calls
+
+    def test_posts_the_issue(self, opened):
+        url = sink()._create_issue("title", "body", "bug")
+        request = opened[0]
+        assert request.get_method() == "POST"
+        assert request.full_url == "https://api.github.com/repos/o/r/issues"
+        assert request.get_header("Authorization") == "Bearer t"
+        assert json.loads(request.data) == {"title": "title", "body": "body", "labels": ["bug"]}
+        assert url == "https://github.test/o/r/issues/7"
+
+    def test_no_labels_key_without_a_label(self, opened):
+        sink()._create_issue("title", "body", None)
+        assert "labels" not in json.loads(opened[0].data)
+
+    def test_http_error_returns_none(self, monkeypatch):
+        def fake(request, timeout):
+            raise urllib.error.HTTPError(
+                request.full_url, 422, "Unprocessable", {}, io.BytesIO(b"invalid label")
+            )
+
+        monkeypatch.setattr("urllib.request.urlopen", fake)
+        assert sink()._create_issue("title", "body", "bug") is None
+
+    def test_any_other_error_returns_none(self, monkeypatch):
+        def fake(request, timeout):
+            raise OSError("network down")
+
+        monkeypatch.setattr("urllib.request.urlopen", fake)
+        assert sink()._create_issue("title", "body", None) is None
