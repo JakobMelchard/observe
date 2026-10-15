@@ -11,6 +11,7 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -18,33 +19,34 @@ import pytest
 from observe import router
 from observe.config.config import ObserveConfig
 from observe.core import ObserveCore
-from observe.middleware.asgi import ObserveASGIMiddleware
+from observe.middleware.asgi import Message, ObserveASGIMiddleware, Receive, Scope, Send
 from observe.middleware.http_server import _BufferedWfile, patch_handler
+from observe.sink.sink import ErrorEvent, FeedbackEvent
 
 HTML = b"<!DOCTYPE html><html><head><title>t</title></head><body>hi</body></html>"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 
 
 @pytest.fixture(autouse=True)
-def reset_router():
+def reset_router() -> Iterator[None]:
     router._sinks.clear()
     router.background = False
     yield
 
 
 class Recorder:
-    def __init__(self):
-        self.errors = []
-        self.feedback = []
+    def __init__(self) -> None:
+        self.errors: list[ErrorEvent] = []
+        self.feedback: list[FeedbackEvent] = []
 
-    def push_error(self, event):
+    def push_error(self, event: ErrorEvent) -> None:
         self.errors.append(event)
 
-    def push_feedback(self, event):
+    def push_feedback(self, event: FeedbackEvent) -> None:
         self.feedback.append(event)
 
 
-async def demo_app(scope, receive, send):
+async def demo_app(scope: Scope, receive: Receive, send: Send) -> None:
     body, content_type = {
         "/": (HTML, b"text/html"),
         "/logo.png": (PNG, b"image/png"),
@@ -62,17 +64,19 @@ async def demo_app(scope, receive, send):
     await send({"type": "http.response.body", "body": body})
 
 
-def asgi_request(path, method="GET", body=b"", content_type=""):
+def asgi_request(
+    path: str, method: str = "GET", body: bytes = b"", content_type: str = ""
+) -> tuple[Message, bytes]:
     app = ObserveASGIMiddleware(demo_app, ObserveConfig())
     headers = [(b"content-type", content_type.encode())] if content_type else []
     headers.append((b"sec-fetch-site", b"same-origin"))
     scope = {"type": "http", "path": path, "method": method, "headers": headers}
-    sent = []
+    sent: list[Message] = []
 
-    async def receive():
+    async def receive() -> Message:
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(msg):
+    async def send(msg: Message) -> None:
         sent.append(msg)
 
     asyncio.run(app(scope, receive, send))
@@ -81,32 +85,32 @@ def asgi_request(path, method="GET", body=b"", content_type=""):
     return start, payload
 
 
-def test_asgi_injects_html():
+def test_asgi_injects_html() -> None:
     start, body = asgi_request("/")
     assert start["status"] == 200
     assert b"observe.js" in body
     assert b"__OBSERVE_CONFIG__" in body
 
 
-def test_asgi_rewrites_content_length():
+def test_asgi_rewrites_content_length() -> None:
     start, body = asgi_request("/")
     length = next(int(v) for k, v in start["headers"] if k.lower() == b"content-length")
     assert length == len(body)
 
 
-def test_asgi_skips_binary():
+def test_asgi_skips_binary() -> None:
     _, body = asgi_request("/logo.png")
     assert body == PNG
 
 
-def test_asgi_serves_shim():
+def test_asgi_serves_shim() -> None:
     start, body = asgi_request("/__observe__/observe.js")
     assert start["status"] == 200
     assert (b"content-type", b"application/javascript") in start["headers"]
     assert len(body) > 0
 
 
-def test_asgi_feedback_reaches_router():
+def test_asgi_feedback_reaches_router() -> None:
     sink = Recorder()
     router.register(sink)
     start, _ = asgi_request(
@@ -119,7 +123,7 @@ def test_asgi_feedback_reaches_router():
     assert sink.feedback[0].message == "asgi"
 
 
-def test_asgi_otlp_reaches_router():
+def test_asgi_otlp_reaches_router() -> None:
     sink = Recorder()
     router.register(sink)
     payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "span"}]}]}]}
@@ -129,51 +133,59 @@ def test_asgi_otlp_reaches_router():
     assert sink.errors[0].message == "span"
 
 
-def test_asgi_streaming_response_is_not_buffered():
-    sent = []
-    seen_mid_stream = []
+async def unused_receive() -> Message:
+    raise AssertionError("receive must not be called")
 
-    async def sse(scope, receive, send):
+
+async def unused_send(msg: Message) -> None:
+    raise AssertionError("send must not be called")
+
+
+def test_asgi_streaming_response_is_not_buffered() -> None:
+    sent: list[Message] = []
+    seen_mid_stream: list[Message] = []
+
+    async def sse(scope: Scope, receive: Receive, send: Send) -> None:
         headers = [(b"content-type", b"text/event-stream")]
         await send({"type": "http.response.start", "status": 200, "headers": headers})
         await send({"type": "http.response.body", "body": b"data: 0\n\n", "more_body": True})
         seen_mid_stream.extend(sent)
         await send({"type": "http.response.body", "body": b"data: 1\n\n"})
 
-    async def send(msg):
+    async def send(msg: Message) -> None:
         sent.append(msg)
 
     scope = {"type": "http", "path": "/events", "method": "GET", "headers": []}
-    asyncio.run(ObserveASGIMiddleware(sse, ObserveConfig())(scope, None, send))
+    asyncio.run(ObserveASGIMiddleware(sse, ObserveConfig())(scope, unused_receive, send))
     assert [m["type"] for m in seen_mid_stream] == ["http.response.start", "http.response.body"]
     assert seen_mid_stream[1]["body"] == b"data: 0\n\n"
     assert len(sent) == 3
 
 
-def test_asgi_passes_through_non_http():
+def test_asgi_passes_through_non_http() -> None:
     app = ObserveASGIMiddleware(demo_app, ObserveConfig())
-    seen = []
+    seen: list[str] = []
 
-    async def lifespan(scope, receive, send):
+    async def lifespan(scope: Scope, receive: Receive, send: Send) -> None:
         seen.append(scope["type"])
 
     app.app = lifespan
-    asyncio.run(app({"type": "lifespan"}, None, None))
+    asyncio.run(app({"type": "lifespan"}, unused_receive, unused_send))
     assert seen == ["lifespan"]
 
 
 class DemoHandler(BaseHTTPRequestHandler):
-    def log_message(self, *args):
+    def log_message(self, *args: object) -> None:
         pass
 
-    def _reply(self, body, content_type):
+    def _reply(self, body: bytes, content_type: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path == "/logo.png":
             self._reply(PNG, "image/png")
         elif self.path == "/missing":
@@ -191,12 +203,12 @@ class DemoHandler(BaseHTTPRequestHandler):
         else:
             self._reply(HTML, "text/html")
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         self._reply(b"{}", "application/json")
 
 
 @pytest.fixture(scope="module")
-def http_url():
+def http_url() -> Iterator[str]:
     patch_handler(DemoHandler, ObserveConfig())
     server = ThreadingHTTPServer(("127.0.0.1", 0), DemoHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -204,7 +216,9 @@ def http_url():
     server.shutdown()
 
 
-def fetch(url, data=None, content_type="application/json"):
+def fetch(
+    url: str, data: bytes | None = None, content_type: str = "application/json"
+) -> tuple[int, dict[str, str], bytes]:
     req = urllib.request.Request(url, data=data)
     if data is not None:
         req.add_header("Content-Type", content_type)
@@ -213,42 +227,42 @@ def fetch(url, data=None, content_type="application/json"):
         return resp.status, dict(resp.headers), resp.read()
 
 
-def test_http_server_injects_html(http_url):
+def test_http_server_injects_html(http_url: str) -> None:
     status, headers, body = fetch(f"{http_url}/")
     assert status == 200
     assert b"observe.js" in body
     assert int(headers["Content-Length"]) == len(body)
 
 
-def test_http_server_skips_binary(http_url):
+def test_http_server_skips_binary(http_url: str) -> None:
     _, _, body = fetch(f"{http_url}/logo.png")
     assert body == PNG
 
 
-def test_http_server_leaves_error_pages_alone(http_url):
+def test_http_server_leaves_error_pages_alone(http_url: str) -> None:
     with pytest.raises(urllib.error.HTTPError) as err:
         fetch(f"{http_url}/missing")
     assert err.value.code == 404
     assert err.value.read() == HTML
 
 
-def test_http_server_leaves_chunked_html_alone(http_url):
+def test_http_server_leaves_chunked_html_alone(http_url: str) -> None:
     _, _, body = fetch(f"{http_url}/chunked")
     assert body == HTML
 
 
 class Sink:
-    def __init__(self):
-        self.written = []
+    def __init__(self) -> None:
+        self.written: list[bytes] = []
 
-    def write(self, b):
+    def write(self, b: bytes) -> None:
         self.written.append(bytes(b))
 
-    def flush(self):
+    def flush(self) -> None:
         pass
 
 
-def test_http_server_streams_a_non_html_response():
+def test_http_server_streams_a_non_html_response() -> None:
     real = Sink()
     out = _BufferedWfile(real, ObserveCore(ObserveConfig()))
     out.write(b"HTTP/1.0 200 OK\r\nContent-Type: video/mp4\r\n\r\nfirst")
@@ -258,7 +272,7 @@ def test_http_server_streams_a_non_html_response():
     assert out.getvalue() == b""
 
 
-def test_http_server_holds_an_html_response_until_the_handler_returns():
+def test_http_server_holds_an_html_response_until_the_handler_returns() -> None:
     real = Sink()
     out = _BufferedWfile(real, ObserveCore(ObserveConfig()))
     out.write(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n<html>")
@@ -267,14 +281,14 @@ def test_http_server_holds_an_html_response_until_the_handler_returns():
     assert out.getvalue().endswith(b"<html></html>")
 
 
-def test_http_server_serves_shim(http_url):
+def test_http_server_serves_shim(http_url: str) -> None:
     status, headers, body = fetch(f"{http_url}/__observe__/observe.js")
     assert status == 200
     assert headers["Content-Type"] == "application/javascript"
     assert len(body) > 0
 
 
-def test_http_server_feedback_reaches_router(http_url):
+def test_http_server_feedback_reaches_router(http_url: str) -> None:
     sink = Recorder()
     router.register(sink)
     status, _, _ = fetch(
@@ -284,12 +298,12 @@ def test_http_server_feedback_reaches_router(http_url):
     assert sink.feedback[0].message == "raw"
 
 
-def test_http_server_patches_get_only_handler():
+def test_http_server_patches_get_only_handler() -> None:
     class GetOnly(BaseHTTPRequestHandler):
-        def log_message(self, *args):
+        def log_message(self, *args: object) -> None:
             pass
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.send_header("Content-Length", str(len(HTML)))
@@ -314,7 +328,7 @@ def test_http_server_patches_get_only_handler():
         server.server_close()
 
 
-def test_http_server_otlp_ignores_query_string(http_url):
+def test_http_server_otlp_ignores_query_string(http_url: str) -> None:
     sink = Recorder()
     router.register(sink)
     payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "qs"}]}]}]}
@@ -323,10 +337,17 @@ def test_http_server_otlp_ignores_query_string(http_url):
 
 
 FEEDBACK = "/__observe__/feedback"
-LIMITS = {"max_body_bytes": 64, "feedback_per_minute": 2}
 
 
-def asgi_post(app, chunks, headers=()):
+def limited_config() -> ObserveConfig:
+    return ObserveConfig(max_body_bytes=64, feedback_per_minute=2)
+
+
+def asgi_post(
+    app: ObserveASGIMiddleware,
+    chunks: list[bytes],
+    headers: Sequence[tuple[bytes, bytes]] = (),
+) -> tuple[int, int]:
     """POST ``chunks`` to the feedback route; returns the status and the receive count."""
     scope = {
         "type": "http",
@@ -342,42 +363,42 @@ def asgi_post(app, chunks, headers=()):
     }
     pending = list(chunks)
     reads = 0
-    sent = []
+    sent: list[Message] = []
 
-    async def receive():
+    async def receive() -> Message:
         nonlocal reads
         reads += 1
         return {"type": "http.request", "body": pending.pop(0), "more_body": bool(pending)}
 
-    async def send(msg):
+    async def send(msg: Message) -> None:
         sent.append(msg)
 
     asyncio.run(app(scope, receive, send))
     return sent[0]["status"], reads
 
 
-def test_asgi_refuses_a_declared_oversize_unread():
+def test_asgi_refuses_a_declared_oversize_unread() -> None:
     sink = Recorder()
     router.register(sink)
-    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    app = ObserveASGIMiddleware(demo_app, limited_config())
     status, reads = asgi_post(app, [b"x" * 65], [(b"content-length", b"65")])
     assert (status, reads) == (413, 0)
     assert sink.feedback == []
 
 
-def test_asgi_stops_reading_a_body_that_outgrows_the_cap():
+def test_asgi_stops_reading_a_body_that_outgrows_the_cap() -> None:
     sink = Recorder()
     router.register(sink)
-    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    app = ObserveASGIMiddleware(demo_app, limited_config())
     status, reads = asgi_post(app, [b"x" * 40] * 50)
     assert (status, reads) == (413, 2)
     assert sink.feedback == []
 
 
-def test_asgi_refuses_cross_site_posts():
+def test_asgi_refuses_cross_site_posts() -> None:
     sink = Recorder()
     router.register(sink)
-    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+    app = ObserveASGIMiddleware(demo_app, limited_config())
     assert asgi_post(app, [b"{}"], [(b"sec-fetch-site", b"cross-site")])[0] == 403
     mismatch = [(b"origin", b"https://other.test"), (b"host", b"app.test")]
     assert asgi_post(app, [b"{}"], mismatch)[0] == 403
@@ -386,17 +407,17 @@ def test_asgi_refuses_cross_site_posts():
     assert asgi_post(app, [b"{}"], match)[0] == 200
 
 
-def test_asgi_refuses_posts_that_come_too_fast():
-    app = ObserveASGIMiddleware(demo_app, ObserveConfig(**LIMITS))
+def test_asgi_refuses_posts_that_come_too_fast() -> None:
+    app = ObserveASGIMiddleware(demo_app, limited_config())
     assert [asgi_post(app, [b"{}"])[0] for _ in range(3)] == [200, 200, 429]
 
 
 @pytest.fixture
-def limited_url():
+def limited_url() -> Iterator[str]:
     class Limited(DemoHandler):
         protocol_version = "HTTP/1.1"
 
-    patch_handler(Limited, ObserveConfig(**LIMITS))
+    patch_handler(Limited, limited_config())
     server = ThreadingHTTPServer(("127.0.0.1", 0), Limited)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
@@ -404,25 +425,25 @@ def limited_url():
     server.server_close()
 
 
-def post_status(url, data=b"{}", headers=None):
+def post_status(url: str, data: bytes = b"{}", headers: dict[str, str] | None = None) -> int:
     origin = urllib.parse.urlsplit(url)
     headers = {"Origin": f"{origin.scheme}://{origin.netloc}", **(headers or {})}
     req = urllib.request.Request(url, data=data, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status
+            return int(resp.status)
     except urllib.error.HTTPError as err:
         return err.code
 
 
-def test_http_server_refuses_oversized_posts(limited_url):
+def test_http_server_refuses_oversized_posts(limited_url: str) -> None:
     sink = Recorder()
     router.register(sink)
     assert post_status(limited_url + FEEDBACK, b"x" * 65) == 413
     assert sink.feedback == []
 
 
-def test_http_server_closes_the_connection_on_an_unread_body(limited_url):
+def test_http_server_closes_the_connection_on_an_unread_body(limited_url: str) -> None:
     """Left open, the unread body would be parsed as the next request."""
     host = limited_url.removeprefix("http://")
     conn = http.client.HTTPConnection(host, timeout=5)
@@ -435,7 +456,7 @@ def test_http_server_closes_the_connection_on_an_unread_body(limited_url):
     conn.close()
 
 
-def test_http_server_refuses_cross_site_posts(limited_url):
+def test_http_server_refuses_cross_site_posts(limited_url: str) -> None:
     sink = Recorder()
     router.register(sink)
     assert post_status(limited_url + FEEDBACK, headers={"Sec-Fetch-Site": "cross-site"}) == 403
@@ -444,5 +465,5 @@ def test_http_server_refuses_cross_site_posts(limited_url):
     assert post_status(limited_url + FEEDBACK, headers={"Origin": limited_url}) == 200
 
 
-def test_http_server_refuses_posts_that_come_too_fast(limited_url):
+def test_http_server_refuses_posts_that_come_too_fast(limited_url: str) -> None:
     assert [post_status(limited_url + FEEDBACK) for _ in range(3)] == [200, 200, 429]

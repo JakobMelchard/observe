@@ -1,5 +1,8 @@
 """Plain WSGI test fixture. No observe imports."""
 
+from collections.abc import Callable
+from typing import Any
+
 INDEX = b"""<!DOCTYPE html>
 <html>
 <head><title>Observe Fixture</title></head>
@@ -9,7 +12,7 @@ INDEX = b"""<!DOCTYPE html>
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 67
 
 
-def app(environ, start_response):
+def app(environ: dict[str, Any], start_response: Callable[..., object]) -> list[bytes]:
     path = environ["PATH_INFO"]
     method = environ["REQUEST_METHOD"]
 

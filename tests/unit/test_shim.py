@@ -15,7 +15,7 @@ SHIM_TESTS = sorted((Path(__file__).parent.parent / "shim").glob("*.test.mjs"))
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 @pytest.mark.parametrize("path", SHIM_TESTS, ids=lambda p: p.name)
-def test_shim(path):
+def test_shim(path: Path) -> None:
     result = subprocess.run(
         ["node", "--test", str(path)], capture_output=True, text=True, timeout=60, check=False
     )
