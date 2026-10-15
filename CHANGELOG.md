@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/JakobMelchard/observe/compare/v0.2.1...v0.2.2) (2026-10-15)
+
+
+### Documentation
+
+* **github:** spell unparsable in expiry comment ([#79](https://github.com/JakobMelchard/observe/issues/79)) ([fe4f4f5](https://github.com/JakobMelchard/observe/commit/fe4f4f55fd37805f76a689b06ace71eb9319d434))
+
 ## [0.2.1](https://github.com/JakobMelchard/observe/compare/v0.2.0...v0.2.1) (2026-10-15)
 
 
