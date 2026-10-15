@@ -96,6 +96,23 @@ class TestTokenReuse:
         )
         assert auth.token() == "ghs_fresh"
 
+    def test_first_mint_looks_up_and_caches_the_installation(self, pem: str, monkeypatch):
+        auth = AppAuth("1", pem, "o/r")
+        assert auth._installation == 0
+        calls = []
+
+        def fake(path, jwt, *, method):
+            calls.append((method, path))
+            return {"id": 42} if path.endswith("/installation") else {"token": "ghs_new"}
+
+        monkeypatch.setattr(AppAuth, "_call", staticmethod(fake))
+        assert auth.token() == "ghs_new"
+        assert calls == [
+            ("GET", "/repos/o/r/installation"),
+            ("POST", "/app/installations/42/access_tokens"),
+        ]
+        assert auth._installation == 42
+
 
 class TestSinkCredentials:
     def test_an_app_is_used_when_no_token_is_set(self, pem: str, monkeypatch):
