@@ -10,24 +10,49 @@ import vm from "node:vm";
 const SOURCE = readFileSync(new URL("../../src/observe/shim/observe.sw.js", import.meta.url), "utf8");
 const OTLP = "http://app.test/__observe__/otlp/v1/traces";
 
+/**
+ * @typedef {{ id: number, body: string }} Row
+ * @typedef {{ result: unknown, onsuccess?: (e: { target: FakeRequest }) => void }} FakeRequest
+ * @typedef {{ objectStore(): object, oncomplete?: () => void }} FakeTransaction
+ * @typedef {{ body: string }} FetchInit A resend always passes one.
+ * @typedef {(input: Request | string, init: FetchInit) => Promise<unknown>} FakeFetch
+ * @typedef {(e: object) => void} Listener
+ */
+
+/**
+ * @param {Map<number, Row>} rows the committed queue
+ * @returns {{ open(): FakeRequest }} an IndexedDB with one store kept in rows
+ */
 function fakeIndexedDB(rows) {
   let nextId = 1;
-  // Like IndexedDB, the result arrives after the caller attached onsuccess.
+  /**
+   * Like IndexedDB, the result arrives after the caller attached onsuccess.
+   *
+   * @param {unknown} [result] what the request yields
+   * @returns {FakeRequest} the pending request
+   */
   function request(result) {
+    /** @type {FakeRequest} */
     const req = { result: result };
     queueMicrotask(function () { if (req.onsuccess) req.onsuccess({ target: req }); });
     return req;
   }
+  /** @returns {FakeTransaction} a transaction that commits on the next tick */
   function transaction() {
+    /** @type {Row[]} */
     const added = [];
+    /** @type {number[]} */
     const deleted = [];
+    /** @type {FakeTransaction} */
     const tx = {
       objectStore() {
         return {
+          /** @param {{ body: string }} value the entry */
           add(value) { added.push(Object.assign({ id: nextId }, value)); return request(nextId++); },
           count() { return request(rows.size); },
           getAll() { return request(Array.from(rows.values())); },
           clear() { rows.clear(); return request(); },
+          /** @param {number} id the key */
           delete(id) { deleted.push(id); return request(); },
         };
       },
@@ -44,10 +69,20 @@ function fakeIndexedDB(rows) {
   return { open() { return request(db); } };
 }
 
+/**
+ * Runs the worker, or a host worker script that imports it, in a fresh context.
+ *
+ * @param {FakeFetch} fetch stands in for the network
+ * @param {string} [host] a host worker script to run instead of the worker itself
+ */
 function load(fetch, host) {
+  /** @type {Map<number, Row>} */
   const rows = new Map();
+  /** @type {Record<string, Listener>} */
   const listeners = {};
+  /** @type {string[]} */
   const tags = [];
+  /** @type {Record<string, unknown> & { fetch: FakeFetch }} */
   const sw = {
     indexedDB: fakeIndexedDB(rows),
     fetch: fetch,
@@ -55,11 +90,11 @@ function load(fetch, host) {
     URL: URL,
     Response: Response,
     clients: { claim() {} },
-    registration: { sync: { register(tag) { tags.push(tag); return Promise.resolve(); } } },
-    addEventListener(type, fn) { listeners[type] = fn; },
+    registration: { sync: { register(/** @type {string} */ tag) { tags.push(tag); return Promise.resolve(); } } },
+    addEventListener(/** @type {string} */ type, /** @type {Listener} */ fn) { listeners[type] = fn; },
   };
   sw.self = sw;
-  sw.importScripts = function (url) {
+  sw.importScripts = function (/** @type {string} */ url) {
     assert.equal(url, "/__observe__/observe.sw.js");
     vm.runInContext(SOURCE, sw);
   };
@@ -72,27 +107,45 @@ function offline() {
   return Promise.reject(new TypeError("Failed to fetch"));
 }
 
-// A POST that fails offline lands in the queue once the fetch event has finished.
+/** @typedef {ReturnType<typeof load>} Worker */
+
+/**
+ * A POST that fails offline lands in the queue once the fetch event has finished.
+ *
+ * @param {Worker} worker the loaded worker
+ * @param {string} body the OTLP body
+ */
 async function enqueue(worker, body) {
+  /** @type {Promise<unknown>[]} */
   const waits = [];
   const live = worker.sw.fetch;
   worker.sw.fetch = offline;
   worker.listeners.fetch({
     request: new Request(OTLP, { method: "POST", body: body }),
-    respondWith(promise) { waits.push(promise); },
-    waitUntil(promise) { waits.push(promise); },
+    respondWith(/** @type {Promise<unknown>} */ promise) { waits.push(promise); },
+    waitUntil(/** @type {Promise<unknown>} */ promise) { waits.push(promise); },
   });
   worker.sw.fetch = live;
   await waits[0];
   await Promise.all(waits);
 }
 
+/**
+ * @param {Worker} worker the loaded worker
+ * @returns {Promise<unknown>} what the sync event waits on
+ */
 function flush(worker) {
-  let waited;
-  worker.listeners.sync({ tag: "observe-flush", waitUntil(promise) { waited = promise; } });
-  return waited;
+  /** @type {Promise<unknown>[]} */
+  const waits = [];
+  worker.listeners.sync({ tag: "observe-flush", waitUntil(/** @type {Promise<unknown>} */ promise) { waits.push(promise); } });
+  assert.equal(waits.length, 1);
+  return waits[0];
 }
 
+/**
+ * @param {Worker} worker the loaded worker
+ * @returns {string[]} the queued bodies in order
+ */
 function bodies(worker) {
   return Array.from(worker.rows.values()).map(function (row) { return row.body; });
 }
@@ -107,6 +160,7 @@ test("queue entries survive a failed flush", async function () {
 });
 
 test("only delivered entries leave the queue", async function () {
+  /** @type {string[]} */
   const sent = [];
   const worker = load(function (_url, init) {
     sent.push(init.body);
@@ -141,9 +195,7 @@ test("the sync event waits for the flush", async function () {
   });
   await enqueue(worker, "{}");
 
-  let waited;
-  worker.listeners.sync({ tag: "observe-flush", waitUntil(promise) { waited = promise; } });
-  await waited;
+  await flush(worker);
   assert.equal(delivered, true);
   assert.equal(worker.rows.size, 0);
 });
@@ -151,17 +203,20 @@ test("the sync event waits for the flush", async function () {
 test("a request that fails offline is queued and asks for a sync", async function () {
   // Like the real fetch, reading the request uses its body up.
   const worker = load(function (request) {
-    return request.text().then(offline);
+    return /** @type {Request} */ (request).text().then(offline);
   });
+  /** @type {Promise<unknown>[]} */
   const waits = [];
-  let response;
+  /** @type {Promise<Response>[]} */
+  const responses = [];
   worker.listeners.fetch({
     request: new Request(OTLP, { method: "POST", body: '{"resourceSpans":[]}' }),
-    respondWith(promise) { response = promise; },
-    waitUntil(promise) { waits.push(promise); },
+    respondWith(/** @type {Promise<Response>} */ promise) { responses.push(promise); },
+    waitUntil(/** @type {Promise<unknown>} */ promise) { waits.push(promise); },
   });
 
-  assert.equal((await response).status, 200);
+  assert.equal(responses.length, 1);
+  assert.equal((await responses[0]).status, 200);
   // The event stays alive until the write has committed, not just until it was issued.
   assert.equal(worker.rows.size, 0);
   await Promise.all(waits);
@@ -170,6 +225,7 @@ test("a request that fails offline is queued and asks for a sync", async functio
 });
 
 test("overlapping flushes share one run and post each entry once", async function () {
+  /** @type {string[]} */
   const sent = [];
   const worker = load(function (_url, init) {
     sent.push(init.body);
@@ -199,7 +255,8 @@ test("importScripts keeps the host worker's globals and serves the OTLP route", 
     'var flushing = "host";',
     'importScripts("/__observe__/observe.sw.js");',
   ].join("\n"));
-  assert.equal(worker.sw.openDB(), "host");
+  const openDB = /** @type {() => string} */ (worker.sw.openDB);
+  assert.equal(openDB(), "host");
   assert.equal(worker.sw.flushing, "host");
 
   await enqueue(worker, '{"resourceSpans":[]}');
