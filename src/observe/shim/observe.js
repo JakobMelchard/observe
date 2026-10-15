@@ -1,5 +1,5 @@
-(function (cfg) {
-  cfg = cfg || {};
+(/** @param {ObserveWindow} win */ function (win) {
+  var cfg = win.__OBSERVE_CONFIG__ || {};
   var endpoint = cfg.endpoint || "/__observe__/otlp";
   // A static site has no middleware behind it: feedback can go to a remote receiver with a
   // bearer token, and the OTLP spans can be switched off when nothing collects them.
@@ -10,16 +10,19 @@
   var enrichHook = cfg.enrichHook || "__observe_enrich__";
   var registerSw = cfg.registerSw === true;
 
+  /** @returns {Record<string, unknown>} what the page's enrich hook returns, or nothing */
   function enrich() {
-    var fn = window[enrichHook];
+    var fn = win[enrichHook];
     return (typeof fn === "function") ? fn() : {};
   }
 
   var _fetch = window.fetch;
+  /** @type {typeof fetch} */
   window.fetch = function () {
-    var args = arguments;
+    var args = /** @type {Parameters<typeof fetch>} */ (/** @type {unknown} */ (arguments));
+    var input = /** @type {Partial<Request> | undefined} */ (args[0]);
     // string, Request (.url) or URL (String() is its href)
-    var url = args[0] && args[0].url ? args[0].url : String(args[0] || "");
+    var url = input && input.url ? input.url : String(input || "");
     if (!url || url.indexOf("/__observe__/") === 0 || url === feedbackEndpoint) {
       return _fetch.apply(this, args);
     }
@@ -61,7 +64,14 @@
     });
   });
 
+  /**
+   * @param {string} message what the user wrote
+   * @param {Record<string, unknown>} [context] merged over the enrich hook's result
+   * @param {Record<string, unknown>} [user] who sent it and the category
+   * @returns {Promise<Response>} the receiver's answer
+   */
   function submitFeedback(message, context, user) {
+    /** @type {Record<string, string>} */
     var headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = "Bearer " + token;
     return _fetch(feedbackEndpoint, {
@@ -77,8 +87,16 @@
     });
   }
 
+  /**
+   * Sends one OTLP span; a failed send is dropped.
+   *
+   * @param {string} name span name
+   * @param {string} level error, warning or info
+   * @param {Record<string, unknown>} [attrs] span attributes, stringified
+   */
   function tryToSendSpan(name, level, attrs) {
     if (!traces) return;
+    /** @type {Record<string, unknown>} */
     var enriched = Object.assign(enrich(), attrs || {}, { level: level });
     _fetch(endpoint + "/v1/traces", {
       method: "POST",
@@ -107,6 +125,10 @@
     });
   }
 
+  /**
+   * @param {number} len number of hex digits
+   * @returns {string} a random hex id
+   */
   function generateId(len) {
     var hex = "0123456789abcdef";
     var id = "";
@@ -123,6 +145,7 @@
 
   // The shim is injected into <head>, so it runs before <body> exists.
   // Everything that touches the DOM waits for it.
+  /** @param {() => void} fn runs once document.body exists */
   function whenReady(fn) {
     if (document.body) { fn(); return; }
     document.addEventListener("DOMContentLoaded", fn, { once: true });
@@ -133,10 +156,12 @@
   var CATEGORIES = ["bug", "idea", "question"];
   var NAME_KEY = "__observe_name__";
 
+  /** @returns {string} the name the user gave last time */
   function remembered() {
     try { return localStorage.getItem(NAME_KEY) || ""; } catch (_e) { return ""; }
   }
 
+  /** @param {string} name kept for the next report */
   function remember(name) {
     try { localStorage.setItem(NAME_KEY, name); } catch (_e) { /* private window */ }
   }
@@ -167,6 +192,7 @@
   ].join("\n");
 
   // A constructed sheet is not inline style, so a CSP without 'unsafe-inline' lets it through.
+  /** Adds the form's stylesheet to the page. */
   function addStyles() {
     var sheet = document.adoptedStyleSheets && window.CSSStyleSheet ? new CSSStyleSheet() : null;
     if (sheet) {
@@ -179,10 +205,17 @@
     document.head.appendChild(style);
   }
 
+  /**
+   * @template {keyof HTMLElementTagNameMap} K
+   * @param {K} tag element name
+   * @param {string} [cls] class name
+   * @param {Partial<HTMLElementTagNameMap[K]>} [props] properties assigned to the element
+   * @returns {HTMLElementTagNameMap[K]} the new element
+   */
   function make(tag, cls, props) {
     var el = document.createElement(tag);
     if (cls) el.className = cls;
-    Object.keys(props || {}).forEach(function (k) { el[k] = props[k]; });
+    Object.assign(el, props);
     return el;
   }
 
@@ -218,6 +251,7 @@
     panel.appendChild(name);
     panel.appendChild(row);
 
+    /** Shows the form and hides the button. */
     function open() {
       panel.style.display = "block";
       btn.style.display = "none";
@@ -225,12 +259,14 @@
       message.focus();
     }
 
+    /** Hides the form, shows the button and clears the message. */
     function close() {
       panel.style.display = "";
       btn.style.display = "";
       message.value = "";
     }
 
+    /** Sends the form; an empty message only refocuses it. */
     function submit() {
       var text = message.value.trim();
       if (!text) { message.focus(); return; }
@@ -259,6 +295,31 @@
 
     if (cfg.button !== false) document.body.appendChild(btn);
     document.body.appendChild(panel);
-    window.__observe__ = { open: open, close: close };
+    win.__observe__ = { open: open, close: close };
   });
-})(window.__OBSERVE_CONFIG__);
+})(/** @type {ObserveWindow} */ (/** @type {unknown} */ (window)));
+
+// Types sit after the IIFE: a JSDoc block in front of it would be read twice.
+
+/**
+ * Set by the middleware (or a static page) as window.__OBSERVE_CONFIG__ before the shim runs.
+ *
+ * @typedef {object} ObserveConfig
+ * @property {string} [repo] repo the feedback is filed against
+ * @property {string} [endpoint] OTLP base URL
+ * @property {string} [feedbackEndpoint] feedback receiver URL
+ * @property {string} [token] bearer token for a remote feedback receiver
+ * @property {boolean} [traces] false switches the OTLP spans off
+ * @property {string} [feedbackLabel] button and dialog label
+ * @property {string} [enrichHook] name of a window function whose result is merged into every report
+ * @property {boolean} [registerSw] true registers observe.sw.js
+ * @property {boolean} [button] false leaves the button out; the site calls window.__observe__.open()
+ */
+
+/**
+ * @typedef {Window & Record<string, unknown> & {
+ *   __OBSERVE_CONFIG__?: ObserveConfig,
+ *   __observe__?: { open: () => void, close: () => void },
+ * }} ObserveWindow
+ */
+

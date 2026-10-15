@@ -1,0 +1,12 @@
+{
+  "name": "observe-shim",
+  "private": true,
+  "description": "Dev tooling for the browser shim only: type checks. The Python package ships the shim as is.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.sw.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5"
+  }
+}

@@ -6,4 +6,4 @@
 - Config: add a row to `FIELDS` in `src/observe/config/config.py`, not an `if`.
 - The core package has zero runtime dependencies. Sinks may have them.
 - `observe.sw.js` must leave no globals so an app worker can `importScripts` it. Keep it inside its IIFE.
-- Run `uv run pytest`, `uv run mypy`, `uv run ruff check .` and `uv run ruff format --check .` before pushing. The shim JS is linted by biome via `prek run --all-files`.
+- Run `uv run pytest`, `uv run mypy`, `uv run ruff check .` and `uv run ruff format --check .` before pushing. The shim JS and its node tests carry JSDoc types: `npm ci && npm run typecheck` (tsc --checkJs, strict; the service worker has its own `tsconfig.sw.json`). biome lints them via `prek run --all-files`.

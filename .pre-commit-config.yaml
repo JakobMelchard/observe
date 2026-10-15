@@ -26,6 +26,14 @@ repos:
         types: [python]
         pass_filenames: false
         stages: [pre-push]
+      # Needs npm ci; CI runs it in the shim job instead.
+      - id: tsc
+        name: tsc --checkJs (strict)
+        entry: npm run typecheck
+        language: system
+        types: [javascript]
+        pass_filenames: false
+        stages: [pre-push]
   - repo: https://github.com/JakobMelchard/.githooks
     rev: v1.0.1
     hooks:

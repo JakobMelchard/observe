@@ -15,5 +15,12 @@ jobs:
       python-version: "3.11"
       lint-cmd: "ruff check . && uv run ruff format --check . && uv run mypy"
 
+  # Type-checks the browser shim and its node tests (tsc --checkJs, strict). biome lints them in hooks.
+  shim:
+    uses: JakobMelchard/.github/.github/workflows/node.yml@4258fca96cbd14e90054debed585f9cf8aad04f7 # v2.1.0
+    with:
+      check-cmd: npm run typecheck
+      lint-cmd: ""
+
   hooks:
     uses: JakobMelchard/.github/.github/workflows/hooks.yml@4258fca96cbd14e90054debed585f9cf8aad04f7 # v2.1.0
