@@ -32,7 +32,9 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-extend-select = ["W", "N", "SIM", "ARG", "PTH", "RET", "TID", "PYI"]
+extend-select = ["W", "N", "SIM", "ARG", "PTH", "RET", "TID", "PYI", "ANN"]
+# Any is used on purpose at the untyped WSGI/ASGI/http.server boundaries.
+ignore = ["ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test doubles must match the Sink / ASGI signatures they stand in for.
@@ -51,14 +53,6 @@ mypy_path = ["src", "sinks/github/src", "sinks/sentry/src"]
 module = "sentry_sdk.*"
 ignore_missing_imports = true
 
-# Tests are checked, but test doubles and fixtures are not required to be
-# annotated: strict typing is for the code that ships.
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

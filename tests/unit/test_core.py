@@ -4,39 +4,49 @@ import importlib
 import json
 import threading
 import time
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any, Never
 
 import pytest
 
-from observe import FeedbackEvent, router
+from observe import ErrorEvent, FeedbackEvent, router
 from observe.config.config import ObserveConfig, load_config
-from observe.core import DAY, JAVASCRIPT, JSON, ObserveCore, RateLimit
+from observe.core import DAY, JAVASCRIPT, JSON, ObserveCore, RateLimit, Reply, Route
+from observe.router import Router
 
 # The package re-exports the router instance under the module's name.
 router_module = importlib.import_module("observe.router")
-Router = router_module.Router
 
 
 @pytest.fixture(autouse=True)
-def reset_router():
+def reset_router() -> Iterator[None]:
     router._sinks.clear()
     router.background = False
     yield
 
 
 @pytest.fixture
-def core():
+def core() -> ObserveCore:
     return ObserveCore(ObserveConfig())
 
 
-class Recorder:
-    def __init__(self):
-        self.errors = []
-        self.feedback = []
+def must_route(core: ObserveCore, path: str, method: str) -> Route:
+    route = core.route(path, method)
+    assert route is not None
+    return route
 
-    def push_error(self, event):
+
+class Recorder:
+    def __init__(self) -> None:
+        self.errors: list[ErrorEvent] = []
+        self.feedback: list[FeedbackEvent] = []
+
+    def push_error(self, event: ErrorEvent) -> None:
         self.errors.append(event)
 
-    def push_feedback(self, event):
+    def push_feedback(self, event: FeedbackEvent) -> None:
         self.feedback.append(event)
 
 
@@ -51,7 +61,9 @@ class Recorder:
         ("/__observe__/otlp/v1/logs", "POST", "otlp", True),
     ],
 )
-def test_route_matches(core, path, method, kind, needs_body):
+def test_route_matches(
+    core: ObserveCore, path: str, method: str, kind: str, needs_body: bool
+) -> None:
     route = core.route(path, method)
     assert route is not None
     assert route.kind == kind
@@ -68,19 +80,19 @@ def test_route_matches(core, path, method, kind, needs_body):
         ("/__observe__/unknown", "GET"),
     ],
 )
-def test_route_delegates(core, path, method):
+def test_route_delegates(core: ObserveCore, path: str, method: str) -> None:
     assert core.route(path, method) is None
 
 
-def test_shim_reply_is_javascript(core):
-    reply = core.reply(core.route("/__observe__/observe.js", "GET"))
+def test_shim_reply_is_javascript(core: ObserveCore) -> None:
+    reply = core.reply(must_route(core, "/__observe__/observe.js", "GET"))
     assert reply.status == 200
     assert reply.content_type == JAVASCRIPT
     assert len(reply.body) > 0
 
 
-def test_config_reply_shape(core):
-    reply = core.reply(core.route("/__observe__/config", "GET"))
+def test_config_reply_shape(core: ObserveCore) -> None:
+    reply = core.reply(must_route(core, "/__observe__/config", "GET"))
     assert reply.content_type == JSON
     assert set(json.loads(reply.body)) == {
         "endpoint",
@@ -91,29 +103,29 @@ def test_config_reply_shape(core):
     }
 
 
-def test_feedback_pushes_event(core):
+def test_feedback_pushes_event(core: ObserveCore) -> None:
     sink = Recorder()
     router.register(sink)
-    route = core.route("/__observe__/feedback", "POST")
+    route = must_route(core, "/__observe__/feedback", "POST")
     core.reply(route, json.dumps({"message": "hi", "user": {"name": "j"}}).encode())
     assert len(sink.feedback) == 1
     assert sink.feedback[0].message == "hi"
     assert sink.feedback[0].user == {"name": "j"}
 
 
-def test_malformed_json_is_tolerated(core):
+def test_malformed_json_is_tolerated(core: ObserveCore) -> None:
     sink = Recorder()
     router.register(sink)
-    reply = core.reply(core.route("/__observe__/feedback", "POST"), b"{not json")
+    reply = core.reply(must_route(core, "/__observe__/feedback", "POST"), b"{not json")
     assert reply.status == 200
     assert sink.feedback[0].message == ""
 
 
-def test_otlp_requires_json_content_type(core):
+def test_otlp_requires_json_content_type(core: ObserveCore) -> None:
     sink = Recorder()
     router.register(sink)
     payload = json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "s"}]}]}]}).encode()
-    route = core.route("/__observe__/otlp/v1/traces", "POST")
+    route = must_route(core, "/__observe__/otlp/v1/traces", "POST")
     core.reply(route, payload, "text/plain")
     assert sink.errors == []
     core.reply(route, payload, "application/json")
@@ -130,15 +142,20 @@ def test_otlp_requires_json_content_type(core):
         {"resourceLogs": [{"scopeLogs": [{"logRecords": "x"}]}]},
     ],
 )
-def test_malformed_otlp_is_skipped(core, payload):
+def test_malformed_otlp_is_skipped(
+    core: ObserveCore,
+    payload: dict[str, object],
+) -> None:
     sink = Recorder()
     router.register(sink)
-    reply = core.reply(core.route(OTLP, "POST"), json.dumps(payload).encode(), "application/json")
+    reply = core.reply(
+        must_route(core, OTLP, "POST"), json.dumps(payload).encode(), "application/json"
+    )
     assert reply.status == 200
     assert sink.errors == []
 
 
-def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
+def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core: ObserveCore) -> None:
     sink = Recorder()
     router.register(sink)
     attrs = [
@@ -151,7 +168,7 @@ def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
         {"key": "ok", "value": {"intValue": "3"}},
     ]
     payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "s", "attributes": attrs}]}]}]}
-    core.reply(core.route(OTLP, "POST"), json.dumps(payload).encode(), "application/json")
+    core.reply(must_route(core, OTLP, "POST"), json.dumps(payload).encode(), "application/json")
     assert [e.context for e in sink.errors] == [{"ok": 3}]
 
 
@@ -165,7 +182,7 @@ def test_malformed_otlp_attributes_are_dropped_and_the_span_kept(core):
         ("/a.png/b", False),
     ],
 )
-def test_is_binary(core, path, binary):
+def test_is_binary(core: ObserveCore, path: str, binary: bool) -> None:
     assert core.is_binary(path) is binary
 
 
@@ -180,11 +197,11 @@ def test_is_binary(core, path, binary):
         (200, "", False),
     ],
 )
-def test_should_inject(core, status, content_type, expected):
+def test_should_inject(core: ObserveCore, status: int, content_type: str, expected: bool) -> None:
     assert core.should_inject(status, content_type) is expected
 
 
-def test_inject_after_head(core):
+def test_inject_after_head(core: ObserveCore) -> None:
     out = core.inject(b"<html><head><title>t</title></head></html>")
     assert out.index(b"observe.js") > out.index(b"<head>")
     assert out.index(b"observe.js") < out.index(b"<title>")
@@ -199,7 +216,7 @@ def test_inject_after_head(core):
         (b"<!doctype html><body>bare</body>", b"<!doctype html>"),
     ],
 )
-def test_inject_keeps_the_doctype_first(core, page, after):
+def test_inject_keeps_the_doctype_first(core: ObserveCore, page: bytes, after: bytes) -> None:
     out = core.inject(page)
     assert out.startswith(page[:1] + b"!")
     assert out.index(b"observe.js") > out.index(after)
@@ -215,7 +232,7 @@ def test_inject_keeps_the_doctype_first(core, page, after):
         b"",
     ],
 )
-def test_fragments_are_never_injected(core, fragment):
+def test_fragments_are_never_injected(core: ObserveCore, fragment: bytes) -> None:
     """htmx swaps this into a page that already has the shim."""
     assert core.inject(fragment) == fragment
 
@@ -238,17 +255,17 @@ def test_fragments_are_never_injected(core, fragment):
         (b"<html-viewer></html-viewer>", False),
     ],
 )
-def test_is_document(body, expected):
+def test_is_document(body: bytes, expected: bool) -> None:
     from observe.core import is_document
 
     assert is_document(body) is expected
 
 
-def test_inject_only_first_head(core):
+def test_inject_only_first_head(core: ObserveCore) -> None:
     assert core.inject(b"<head><head>").count(b"observe.js") == 1
 
 
-def test_shim_is_cached(core):
+def test_shim_is_cached(core: ObserveCore) -> None:
     assert core.shim("observe.js") is core.shim("observe.js")
 
 
@@ -260,12 +277,12 @@ class TestInjectionOrder:
     defaults, so an option like `register_sw=False` does nothing.
     """
 
-    def test_config_is_set_before_the_shim_is_loaded(self):
+    def test_config_is_set_before_the_shim_is_loaded(self) -> None:
         core = ObserveCore(ObserveConfig())
         page = core.inject(b"<!doctype html><html><head></head><body></body></html>")
         assert page.index(b"__OBSERVE_CONFIG__") < page.index(b"observe.js")
 
-    def test_options_reach_the_page(self):
+    def test_options_reach_the_page(self) -> None:
         core = ObserveCore(ObserveConfig(register_sw=True, button=False, feedback_label="Sag was"))
         page = core.inject(b"<html><head></head></html>")
         assert b'"registerSw": true' in page
@@ -273,20 +290,20 @@ class TestInjectionOrder:
         assert b"Sag was" in page
 
 
-def test_the_worker_is_not_registered_by_default():
+def test_the_worker_is_not_registered_by_default() -> None:
     assert ObserveConfig().register_sw is False
     assert b'"registerSw": false' in ObserveCore(ObserveConfig()).config_bytes
 
 
 class TestServiceWorkerScope:
-    def test_the_worker_is_allowed_the_whole_origin(self):
+    def test_the_worker_is_allowed_the_whole_origin(self) -> None:
         """Served from `__observe__/`, it could otherwise only claim that path."""
         core = ObserveCore(ObserveConfig())
         route = core.route("/__observe__/observe.sw.js", "GET")
         assert route is not None
         assert ("Service-Worker-Allowed", "/") in core.reply(route).headers
 
-    def test_the_ordinary_shim_carries_no_extra_headers(self):
+    def test_the_ordinary_shim_carries_no_extra_headers(self) -> None:
         core = ObserveCore(ObserveConfig())
         route = core.route("/__observe__/observe.js", "GET")
         assert route is not None
@@ -296,16 +313,16 @@ class TestServiceWorkerScope:
 class TestFeedbackShim:
     """The form has to send what a router needs to route on."""
 
-    def test_asks_for_a_category_and_a_name(self):
+    def test_asks_for_a_category_and_a_name(self) -> None:
         shim = ObserveCore(ObserveConfig()).shim("observe.js").decode()
         assert "category: category.value" in shim
         assert "name: who" in shim
 
-    def test_carries_the_user_block_the_server_already_parses(self):
+    def test_carries_the_user_block_the_server_already_parses(self) -> None:
         shim = ObserveCore(ObserveConfig()).shim("observe.js").decode()
         assert "user: user || {}" in shim
 
-    def test_does_not_use_a_browser_prompt(self):
+    def test_does_not_use_a_browser_prompt(self) -> None:
         """A prompt cannot collect a category, and blocks the page."""
         assert "prompt(" not in ObserveCore(ObserveConfig()).shim("observe.js").decode()
 
@@ -313,15 +330,15 @@ class TestFeedbackShim:
 class TestDelivery:
     """A submission must not wait on whatever the sinks go and do."""
 
-    def test_the_request_does_not_wait_for_a_slow_sink(self):
+    def test_the_request_does_not_wait_for_a_slow_sink(self) -> None:
         import time
 
         started = threading.Event()
 
         class Slow:
-            def push_error(self, event): ...
+            def push_error(self, event: ErrorEvent) -> None: ...
 
-            def push_feedback(self, event):
+            def push_feedback(self, event: FeedbackEvent) -> None:
                 started.set()
                 time.sleep(2)
 
@@ -337,19 +354,19 @@ class TestDelivery:
         assert started.wait(1)
         router.drain()
 
-    def test_one_failing_sink_does_not_stop_the_others(self):
-        seen = []
+    def test_one_failing_sink_does_not_stop_the_others(self) -> None:
+        seen: list[str] = []
 
         class Broken:
-            def push_error(self, event): ...
+            def push_error(self, event: ErrorEvent) -> None: ...
 
-            def push_feedback(self, event):
+            def push_feedback(self, event: FeedbackEvent) -> Never:
                 raise RuntimeError("no")
 
         class Fine:
-            def push_error(self, event): ...
+            def push_error(self, event: ErrorEvent) -> None: ...
 
-            def push_feedback(self, event):
+            def push_feedback(self, event: FeedbackEvent) -> None:
                 seen.append(event.message)
 
         router.register(Broken())
@@ -364,19 +381,19 @@ class TestDelivery:
 class Blocked:
     """A sink that holds every delivery until released."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.release = threading.Event()
-        self.seen = []
+        self.seen: list[str] = []
 
-    def push_error(self, event): ...
+    def push_error(self, event: ErrorEvent) -> None: ...
 
-    def push_feedback(self, event):
+    def push_feedback(self, event: FeedbackEvent) -> None:
         self.release.wait(5)
         self.seen.append(event.message)
 
 
 class TestQueue:
-    def test_deliveries_beyond_the_bound_are_dropped(self, monkeypatch):
+    def test_deliveries_beyond_the_bound_are_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(router_module, "MAX_PENDING", 3)
         r = Router()
         sink = Blocked()
@@ -387,7 +404,7 @@ class TestQueue:
         r.drain()
         assert sorted(sink.seen) == ["0", "1", "2"]
 
-    def test_a_finished_delivery_frees_its_slot(self, monkeypatch):
+    def test_a_finished_delivery_frees_its_slot(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(router_module, "MAX_PENDING", 1)
         r = Router()
         sink = Recorder()
@@ -397,11 +414,11 @@ class TestQueue:
             r.drain()
         assert [e.message for e in sink.feedback] == ["0", "1", "2"]
 
-    def test_concurrent_pushes_share_one_pool(self, monkeypatch):
-        made = []
+    def test_concurrent_pushes_share_one_pool(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        made: list[ThreadPoolExecutor] = []
 
-        class SlowPool(router_module.ThreadPoolExecutor):
-            def __init__(self, *args, **kwargs):
+        class SlowPool(ThreadPoolExecutor):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 made.append(self)
                 time.sleep(0.05)
                 super().__init__(*args, **kwargs)
@@ -424,7 +441,7 @@ class TestQueue:
 class TestInlineConfig:
     """The config is inlined into a `<script>`; a `<` in it must not end the element."""
 
-    def test_markup_in_a_config_value_is_escaped(self):
+    def test_markup_in_a_config_value_is_escaped(self) -> None:
         label = "</script><script>alert(1)</script>"
         core = ObserveCore(ObserveConfig(feedback_label=label))
         page = core.inject(b"<html><head></head></html>")
@@ -440,14 +457,19 @@ OTLP = "/__observe__/otlp/v1/traces"
 BROWSER = {"origin": "http://app.test", "host": "app.test"}
 
 
-def refuse(core, path=FEEDBACK, headers=None, client="10.0.0.1"):
+def refuse(
+    core: ObserveCore,
+    path: str = FEEDBACK,
+    headers: dict[str, str] | None = None,
+    client: str = "10.0.0.1",
+) -> Reply | None:
     route = core.route(path, "POST")
     assert route is not None
     return core.refuse(route, {"content-length": "2", **BROWSER, **(headers or {})}, client)
 
 
 class TestBodyLimit:
-    def test_a_declared_length_over_the_cap_is_refused(self):
+    def test_a_declared_length_over_the_cap_is_refused(self) -> None:
         core = ObserveCore(ObserveConfig(max_body_bytes=10))
         assert refuse(core, headers={"content-length": "10"}) is None
         reply = refuse(core, headers={"content-length": "11"})
@@ -455,12 +477,12 @@ class TestBodyLimit:
         assert reply.status == 413
 
     @pytest.mark.parametrize("length", ["-1", "abc", "1e3"])
-    def test_a_length_that_is_not_a_count_is_refused(self, core, length):
+    def test_a_length_that_is_not_a_count_is_refused(self, core: ObserveCore, length: str) -> None:
         reply = refuse(core, headers={"content-length": length})
         assert reply is not None
         assert reply.status == 413
 
-    def test_a_body_over_the_cap_is_not_ingested(self):
+    def test_a_body_over_the_cap_is_not_ingested(self) -> None:
         sink = Recorder()
         router.register(sink)
         core = ObserveCore(ObserveConfig(max_body_bytes=10))
@@ -470,11 +492,11 @@ class TestBodyLimit:
         assert reply.status == 413
         assert sink.feedback == []
 
-    def test_zero_lifts_the_cap(self):
+    def test_zero_lifts_the_cap(self) -> None:
         core = ObserveCore(ObserveConfig(max_body_bytes=0))
         assert refuse(core, headers={"content-length": "99999999"}) is None
 
-    def test_get_routes_are_never_refused(self, core):
+    def test_get_routes_are_never_refused(self, core: ObserveCore) -> None:
         route = core.route("/__observe__/config", "GET")
         assert route is not None
         assert core.refuse(route, {"sec-fetch-site": "cross-site"}, "10.0.0.1") is None
@@ -494,17 +516,17 @@ class TestSameSite:
             {"origin": "http://[::1]:8000", "host": "[::1]:8000"},
         ],
     )
-    def test_same_site_posts_pass(self, core, headers):
+    def test_same_site_posts_pass(self, core: ObserveCore, headers: dict[str, str]) -> None:
         assert refuse(core, headers=headers) is None
 
-    def test_feedback_without_a_browser_header_is_refused(self, core):
+    def test_feedback_without_a_browser_header_is_refused(self, core: ObserveCore) -> None:
         route = core.route(FEEDBACK, "POST")
         assert route is not None
         reply = core.refuse(route, {"content-length": "2"}, "10.0.0.1")
         assert reply is not None
         assert reply.status == 403
 
-    def test_otlp_without_a_browser_header_passes(self, core):
+    def test_otlp_without_a_browser_header_passes(self, core: ObserveCore) -> None:
         route = core.route(OTLP, "POST")
         assert route is not None
         assert core.refuse(route, {"content-length": "2"}, "10.0.0.1") is None
@@ -520,12 +542,12 @@ class TestSameSite:
             {"origin": "http://[bad", "host": "app.test"},
         ],
     )
-    def test_cross_site_posts_are_refused(self, core, headers):
+    def test_cross_site_posts_are_refused(self, core: ObserveCore, headers: dict[str, str]) -> None:
         reply = refuse(core, headers=headers)
         assert reply is not None
         assert reply.status == 403
 
-    def test_the_check_can_be_switched_off(self):
+    def test_the_check_can_be_switched_off(self) -> None:
         core = ObserveCore(ObserveConfig(same_site=False))
         assert refuse(core, headers={"sec-fetch-site": "cross-site"}) is None
         route = core.route(FEEDBACK, "POST")
@@ -534,7 +556,7 @@ class TestSameSite:
 
 
 class TestRateLimit:
-    def test_posts_beyond_the_limit_are_refused(self):
+    def test_posts_beyond_the_limit_are_refused(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_minute=2))
         assert refuse(core) is None
         assert refuse(core) is None
@@ -542,29 +564,29 @@ class TestRateLimit:
         assert reply is not None
         assert reply.status == 429
 
-    def test_each_client_has_its_own_budget(self):
+    def test_each_client_has_its_own_budget(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_minute=1))
         assert refuse(core, client="10.0.0.1") is None
         assert refuse(core, client="10.0.0.2") is None
         assert refuse(core, client="10.0.0.1") is not None
 
-    def test_feedback_and_otlp_are_counted_apart(self):
+    def test_feedback_and_otlp_are_counted_apart(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_minute=1, otlp_per_minute=1))
         assert refuse(core, FEEDBACK) is None
         assert refuse(core, OTLP) is None
         assert refuse(core, FEEDBACK) is not None
         assert refuse(core, OTLP) is not None
 
-    def test_a_refused_post_does_not_use_up_the_budget(self):
+    def test_a_refused_post_does_not_use_up_the_budget(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_minute=1))
         assert refuse(core, headers={"sec-fetch-site": "cross-site"}) is not None
         assert refuse(core) is None
 
-    def test_zero_lifts_the_limit(self):
+    def test_zero_lifts_the_limit(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_minute=0))
         assert all(refuse(core) is None for _ in range(50))
 
-    def test_feedback_has_a_daily_cap_across_all_clients(self):
+    def test_feedback_has_a_daily_cap_across_all_clients(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_day=2))
         assert refuse(core, client="10.0.0.1") is None
         assert refuse(core, client="10.0.0.2") is None
@@ -573,13 +595,13 @@ class TestRateLimit:
         assert reply.status == 429
         assert refuse(core, OTLP, client="10.0.0.3") is None
 
-    def test_a_client_over_its_limit_does_not_use_up_the_daily_cap(self):
+    def test_a_client_over_its_limit_does_not_use_up_the_daily_cap(self) -> None:
         core = ObserveCore(ObserveConfig(feedback_per_minute=1, feedback_per_day=2))
         assert refuse(core, client="10.0.0.1") is None
         assert all(refuse(core, client="10.0.0.1") is not None for _ in range(5))
         assert refuse(core, client="10.0.0.2") is None
 
-    def test_the_daily_cap_resets_after_a_day(self):
+    def test_the_daily_cap_resets_after_a_day(self) -> None:
         now = [0.0]
         limit = RateLimit(1, window=DAY, clock=lambda: now[0])
         assert limit.allow("")
@@ -588,7 +610,7 @@ class TestRateLimit:
         now[0] = DAY
         assert limit.allow("")
 
-    def test_the_budget_comes_back_when_the_window_turns(self):
+    def test_the_budget_comes_back_when_the_window_turns(self) -> None:
         now = [0.0]
         limit = RateLimit(1, clock=lambda: now[0])
         assert limit.allow("a")
@@ -599,7 +621,7 @@ class TestRateLimit:
         assert limit.allow("a")
 
 
-def test_limits_load_from_toml(tmp_path):
+def test_limits_load_from_toml(tmp_path: Path) -> None:
     path = tmp_path / "observe.toml"
     path.write_text(
         "[collector]\n"
@@ -617,7 +639,9 @@ def test_limits_load_from_toml(tmp_path):
     assert cfg.otlp_per_minute == 0
 
 
-def test_discovery_falls_back_from_observe_toml_to_pyproject_to_defaults(tmp_path, monkeypatch):
+def test_discovery_falls_back_from_observe_toml_to_pyproject_to_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     assert load_config().feedback_per_minute == 10
     (tmp_path / "pyproject.toml").write_text("[tool.observe.collector]\nfeedback_per_minute = 3\n")
@@ -626,7 +650,9 @@ def test_discovery_falls_back_from_observe_toml_to_pyproject_to_defaults(tmp_pat
     assert load_config().feedback_per_minute == 5
 
 
-def test_pyproject_ignores_top_level_tables(tmp_path, monkeypatch):
+def test_pyproject_ignores_top_level_tables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "pyproject.toml").write_text("[collector]\nfeedback_per_minute = 3\n")
     assert load_config().feedback_per_minute == 10

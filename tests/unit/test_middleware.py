@@ -1,13 +1,15 @@
 """Unit tests for ObserveMiddleware using werkzeug test client."""
 
 import json
+from collections.abc import Iterable, Iterator
+from typing import Any, Never
 
 import pytest
 from werkzeug.test import Client
 
-from observe import router
+from observe import ErrorEvent, FeedbackEvent, router
 from observe.config.config import ObserveConfig
-from observe.middleware.wsgi import ObserveMiddleware
+from observe.middleware.wsgi import Environ, ObserveMiddleware, StartResponse, WSGIApp
 from tests.fixture import app as fixture_app
 
 #: What a browser sends with a same-origin fetch POST; feedback without it is refused.
@@ -15,33 +17,33 @@ SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
 
 
 @pytest.fixture(autouse=True)
-def reset_router():
+def reset_router() -> Iterator[None]:
     router._sinks.clear()
     router.background = False
     yield
 
 
 @pytest.fixture
-def client():
+def client() -> Client:
     cfg = ObserveConfig()
     wrapped = ObserveMiddleware(fixture_app.app, cfg)
     return Client(wrapped)
 
 
-def test_get_html_contains_observe_script(client):
+def test_get_html_contains_observe_script(client: Client) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"observe.js" in resp.data
 
 
-def test_content_length_matches_injected_body(client):
+def test_content_length_matches_injected_body(client: Client) -> None:
     resp = client.get("/")
     assert b"observe.js" in resp.data
     assert int(resp.headers["Content-Length"]) == len(resp.data)
 
 
-def test_head_keeps_declared_content_length():
-    def head(environ, start_response):
+def test_head_keeps_declared_content_length() -> None:
+    def head(environ: Environ, start_response: StartResponse) -> Iterable[bytes]:
         start_response("200 OK", [("Content-Type", "text/html"), ("Content-Length", "120")])
         return []
 
@@ -52,30 +54,30 @@ def test_head_keeps_declared_content_length():
 class Events:
     """An event stream that records how far it was read and whether it was closed."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.produced = 0
         self.closed = False
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[bytes]:
         for n in range(3):
             self.produced += 1
             yield b"data: %d\n\n" % n
 
-    def close(self):
+    def close(self) -> None:
         self.closed = True
 
 
-def call(app, path="/"):
+def call(app: WSGIApp, path: str = "/") -> tuple[list[Any], Iterator[Any]]:
     started = []
     environ = {"PATH_INFO": path, "REQUEST_METHOD": "GET"}
     chunks = ObserveMiddleware(app, ObserveConfig())(environ, lambda *a: started.append(a))
     return started, iter(chunks)
 
 
-def test_streaming_response_is_not_buffered():
+def test_streaming_response_is_not_buffered() -> None:
     events = Events()
 
-    def sse(environ, start_response):
+    def sse(environ: Environ, start_response: StartResponse) -> Iterable[bytes]:
         start_response("200 OK", [("Content-Type", "text/event-stream")])
         return events
 
@@ -85,8 +87,8 @@ def test_streaming_response_is_not_buffered():
     assert started[0][0] == "200 OK"
 
 
-def test_generator_app_is_passed_through():
-    def app(environ, start_response):
+def test_generator_app_is_passed_through() -> None:
+    def app(environ: Environ, start_response: StartResponse) -> Iterable[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
         yield b"a"
         yield b"b"
@@ -97,10 +99,10 @@ def test_generator_app_is_passed_through():
 
 
 @pytest.mark.parametrize("content_type", ["text/event-stream", "text/html"])
-def test_app_iterable_is_closed(content_type):
+def test_app_iterable_is_closed(content_type: str) -> None:
     events = Events()
 
-    def app(environ, start_response):
+    def app(environ: Environ, start_response: StartResponse) -> Iterable[bytes]:
         start_response("200 OK", [("Content-Type", content_type)])
         return events
 
@@ -109,13 +111,13 @@ def test_app_iterable_is_closed(content_type):
     assert events.closed
 
 
-def test_get_html_contains_config_json(client):
+def test_get_html_contains_config_json(client: Client) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"__OBSERVE_CONFIG__" in resp.data
 
 
-def test_config_json_shape(client):
+def test_config_json_shape(client: Client) -> None:
     resp = client.get("/__observe__/config")
     assert resp.status_code == 200
     data = json.loads(resp.data)
@@ -126,35 +128,35 @@ def test_config_json_shape(client):
     assert data["button"] is True
 
 
-def test_binary_response_not_injected(client):
+def test_binary_response_not_injected(client: Client) -> None:
     resp = client.get("/binary")
     assert resp.status_code == 200
     assert resp.content_type == "image/png"
     assert b"observe.js" not in resp.data
 
 
-def test_serve_observe_js(client):
+def test_serve_observe_js(client: Client) -> None:
     resp = client.get("/__observe__/observe.js")
     assert resp.status_code == 200
     assert resp.content_type == "application/javascript"
     assert len(resp.data) > 0
 
 
-def test_serve_observe_sw_js(client):
+def test_serve_observe_sw_js(client: Client) -> None:
     resp = client.get("/__observe__/observe.sw.js")
     assert resp.status_code == 200
     assert resp.content_type == "application/javascript"
     assert len(resp.data) > 0
 
 
-def test_feedback_calls_router(client):
+def test_feedback_calls_router(client: Client) -> None:
     events = []
 
     class TestSink:
-        def push_error(self, event):
+        def push_error(self, event: ErrorEvent) -> None:
             pass
 
-        def push_feedback(self, event):
+        def push_feedback(self, event: FeedbackEvent) -> None:
             events.append(event)
 
     router.register(TestSink())
@@ -174,14 +176,14 @@ def test_feedback_calls_router(client):
     assert events[0].message == "test feedback"
 
 
-def test_otlp_calls_router(client):
+def test_otlp_calls_router(client: Client) -> None:
     events = []
 
     class TestSink:
-        def push_error(self, event):
+        def push_error(self, event: ErrorEvent) -> None:
             events.append(event)
 
-        def push_feedback(self, event):
+        def push_feedback(self, event: FeedbackEvent) -> None:
             pass
 
     router.register(TestSink())
@@ -216,14 +218,14 @@ def test_otlp_calls_router(client):
     assert events[0].trace_id == "abc123"
 
 
-def test_app_passthrough_unchanged(client):
+def test_app_passthrough_unchanged(client: Client) -> None:
     resp = client.post("/save", data=json.dumps({"ok": True}), content_type="application/json")
     assert resp.status_code == 200
     assert json.loads(resp.data) == {}
 
 
-def test_app_error_not_swallowed():
-    def app(environ, start_response):
+def test_app_error_not_swallowed() -> None:
+    def app(environ: Environ, start_response: StartResponse) -> Never:
         raise RuntimeError("boom")
 
     _, chunks = call(app)
@@ -232,15 +234,15 @@ def test_app_error_not_swallowed():
 
 
 @pytest.mark.parametrize("content_type", ["text/event-stream", "text/html"])
-def test_iterable_error_not_swallowed_and_closed(content_type):
+def test_iterable_error_not_swallowed_and_closed(content_type: str) -> None:
     class Failing(Events):
-        def __iter__(self):
+        def __iter__(self) -> Iterator[bytes]:
             yield b"data: 0\n\n"
             raise RuntimeError("boom")
 
     events = Failing()
 
-    def app(environ, start_response):
+    def app(environ: Environ, start_response: StartResponse) -> Iterable[bytes]:
         start_response("200 OK", [("Content-Type", content_type)])
         return events
 
@@ -250,7 +252,7 @@ def test_iterable_error_not_swallowed_and_closed(content_type):
     assert events.closed
 
 
-def test_no_sink_registered_feedback_returns_200(client):
+def test_no_sink_registered_feedback_returns_200(client: Client) -> None:
     resp = client.post(
         "/__observe__/feedback",
         headers=SAME_ORIGIN,
@@ -260,21 +262,21 @@ def test_no_sink_registered_feedback_returns_200(client):
     assert resp.status_code == 200
 
 
-def test_multiple_sinks_called(client):
+def test_multiple_sinks_called(client: Client) -> None:
     events = []
 
     class Sink1:
-        def push_error(self, e):
+        def push_error(self, e: ErrorEvent) -> None:
             pass
 
-        def push_feedback(self, e):
+        def push_feedback(self, e: FeedbackEvent) -> None:
             events.append(1)
 
     class Sink2:
-        def push_error(self, e):
+        def push_error(self, e: ErrorEvent) -> None:
             pass
 
-        def push_feedback(self, e):
+        def push_feedback(self, e: FeedbackEvent) -> None:
             events.append(2)
 
     router.register(Sink1())
@@ -288,14 +290,14 @@ def test_multiple_sinks_called(client):
     assert events == [1, 2]
 
 
-def test_otlp_logs_calls_router(client):
+def test_otlp_logs_calls_router(client: Client) -> None:
     events = []
 
     class TestSink:
-        def push_error(self, event):
+        def push_error(self, event: ErrorEvent) -> None:
             events.append(event)
 
-        def push_feedback(self, event):
+        def push_feedback(self, event: FeedbackEvent) -> None:
             pass
 
     router.register(TestSink())
@@ -331,14 +333,14 @@ FEEDBACK = "/__observe__/feedback"
 
 
 @pytest.fixture
-def limited():
+def limited() -> tuple[Client, list[Any]]:
     events = []
 
     class TestSink:
-        def push_error(self, event):
+        def push_error(self, event: ErrorEvent) -> None:
             pass
 
-        def push_feedback(self, event):
+        def push_feedback(self, event: FeedbackEvent) -> None:
             events.append(event)
 
     router.register(TestSink())
@@ -346,7 +348,7 @@ def limited():
     return Client(ObserveMiddleware(fixture_app.app, cfg)), events
 
 
-def test_oversized_post_is_refused(limited):
+def test_oversized_post_is_refused(limited: tuple[Client, list[Any]]) -> None:
     client, events = limited
     resp = client.post(
         FEEDBACK, data=b"x" * 65, content_type="application/json", headers=SAME_ORIGIN
@@ -355,9 +357,9 @@ def test_oversized_post_is_refused(limited):
     assert events == []
 
 
-def test_oversized_post_is_refused_before_the_body_is_read():
+def test_oversized_post_is_refused_before_the_body_is_read() -> None:
     class Unreadable:
-        def read(self, *args):
+        def read(self, *args: object) -> Never:
             raise AssertionError("the body was read")
 
     app = ObserveMiddleware(fixture_app.app, ObserveConfig(max_body_bytes=64))
@@ -374,7 +376,7 @@ def test_oversized_post_is_refused_before_the_body_is_read():
     assert not started[0][0].endswith(" OK")
 
 
-def test_cross_site_post_is_refused(limited):
+def test_cross_site_post_is_refused(limited: tuple[Client, list[Any]]) -> None:
     client, events = limited
     resp = client.post(FEEDBACK, data=b"{}", headers={"Sec-Fetch-Site": "cross-site"})
     assert resp.status_code == 403
@@ -386,7 +388,7 @@ def test_cross_site_post_is_refused(limited):
     assert len(events) == 1
 
 
-def test_posts_that_come_too_fast_are_refused(limited):
+def test_posts_that_come_too_fast_are_refused(limited: tuple[Client, list[Any]]) -> None:
     client, events = limited
     statuses = [
         client.post(FEEDBACK, data=b"{}", headers=SAME_ORIGIN).status_code for _ in range(3)
