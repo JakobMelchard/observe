@@ -19,10 +19,6 @@ dependencies = [
 app = [
     "cryptography>=42",
 ]
-dev = [
-    "pytest>=8",
-    "cryptography>=42",
-]
 
 [tool.setuptools.packages.find]
 where = ["src"]
