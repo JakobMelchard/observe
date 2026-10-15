@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.1](https://github.com/JakobMelchard/observe/compare/v0.2.0...v0.2.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **config:** read pyproject.toml settings from [tool.observe] ([#46](https://github.com/JakobMelchard/observe/issues/46)) ([678d982](https://github.com/JakobMelchard/observe/commit/678d982e6b7f806556d3fbe6277b859e2cef22c6))
+* **core:** never inject the shim ahead of the doctype ([#49](https://github.com/JakobMelchard/observe/issues/49)) ([cb636d6](https://github.com/JakobMelchard/observe/commit/cb636d6cc657348083d0af486d592d1a1c92a124))
+* **core:** refuse non-browser feedback and cap feedback per day ([#63](https://github.com/JakobMelchard/observe/issues/63)) ([b8f30fc](https://github.com/JakobMelchard/observe/commit/b8f30fce561480f913de7840ba7d198f75261051))
+* **github:** render an unusable log timestamp as ? ([#50](https://github.com/JakobMelchard/observe/issues/50)) ([22cde9c](https://github.com/JakobMelchard/observe/commit/22cde9c0d961614b95cae5b9ba194e24dc5ff6f8))
+* **http_server:** inject only into 2xx HTML responses ([#67](https://github.com/JakobMelchard/observe/issues/67)) ([2fcecd8](https://github.com/JakobMelchard/observe/commit/2fcecd8f6e47cc55f1d2dc1e13f2b509289ec497))
+* **http_server:** stream non-HTML responses instead of buffering them ([#44](https://github.com/JakobMelchard/observe/issues/44)) ([b8e9ba2](https://github.com/JakobMelchard/observe/commit/b8e9ba2c36ac495d58062c23bc0c874ab5d50da5))
+* keep client text out of issue titles and bound the delivery queue ([#64](https://github.com/JakobMelchard/observe/issues/64)) ([21f3865](https://github.com/JakobMelchard/observe/commit/21f38651e6ffd9e0c3ac920981ecb5aed57faf2a))
+* **otlp:** skip attributes whose key is not a string ([#59](https://github.com/JakobMelchard/observe/issues/59)) ([ed73b59](https://github.com/JakobMelchard/observe/commit/ed73b5919e11bb4d980549823cc3f6fa5d7f757c))
+* **otlp:** skip malformed payload parts instead of raising ([#43](https://github.com/JakobMelchard/observe/issues/43)) ([f3688e7](https://github.com/JakobMelchard/observe/commit/f3688e77300f5a45075269c7c18e9adc954e1ac5))
+* **receiver:** drop an OTLP intValue that overflows int() ([#57](https://github.com/JakobMelchard/observe/issues/57)) ([7d6e6ba](https://github.com/JakobMelchard/observe/commit/7d6e6baa9ee76434ac62154a95ac9d8f63180d2a))
+
+
+### Documentation
+
+* say that collector.endpoint only moves the browser side ([#48](https://github.com/JakobMelchard/observe/issues/48)) ([d932e86](https://github.com/JakobMelchard/observe/commit/d932e86d7b27f77b11550efa3fd53673c31acde7))
+* trim AGENTS.md to rules, drop stale skill notes ([#54](https://github.com/JakobMelchard/observe/issues/54)) ([0e05009](https://github.com/JakobMelchard/observe/commit/0e05009e8b08c1125580a6160e1f332999e12e3f))
+
 ## [0.2.0](https://github.com/JakobMelchard/observe/compare/v0.1.1...v0.2.0) (2026-10-11)
 
 
