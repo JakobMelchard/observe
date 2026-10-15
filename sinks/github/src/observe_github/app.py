@@ -125,6 +125,6 @@ def _timestamp(iso: str) -> float:
     try:
         return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
     except ValueError:
-        # Unparseable expiry: treat the token as good for the documented
+        # Unparsable expiry: treat the token as good for the documented
         # hour rather than never refreshing it.
         return time.time() + 3600
