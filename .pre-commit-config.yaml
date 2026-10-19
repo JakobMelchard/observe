@@ -35,6 +35,6 @@ repos:
         pass_filenames: false
         stages: [pre-push]
   - repo: https://github.com/JakobMelchard/.githooks
-    rev: v1.0.1
+    rev: v1.0.2
     hooks:
       - id: conventional-commit
