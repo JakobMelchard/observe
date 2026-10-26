@@ -10,17 +10,17 @@ on:
 
 jobs:
   ci:
-    uses: JakobMelchard/.github/.github/workflows/python.yml@531b4dcb30293e6219d67e312e164cc262a69955 # v2.3.1
+    uses: JakobMelchard/.github/.github/workflows/python.yml@88bfcf0fb6db99ff67f1e0e8f082f9b7e391028d # v2.4.1
     with:
       python-version: "3.11"
       lint-cmd: "ruff check . && uv run ruff format --check . && uv run mypy"
 
   # Type-checks the browser shim and its node tests (tsc --checkJs, strict). biome lints them in hooks.
   shim:
-    uses: JakobMelchard/.github/.github/workflows/node.yml@531b4dcb30293e6219d67e312e164cc262a69955 # v2.3.1
+    uses: JakobMelchard/.github/.github/workflows/node.yml@88bfcf0fb6db99ff67f1e0e8f082f9b7e391028d # v2.4.1
     with:
       check-cmd: npm run typecheck
       lint-cmd: ""
 
   hooks:
-    uses: JakobMelchard/.github/.github/workflows/hooks.yml@531b4dcb30293e6219d67e312e164cc262a69955 # v2.3.1
+    uses: JakobMelchard/.github/.github/workflows/hooks.yml@88bfcf0fb6db99ff67f1e0e8f082f9b7e391028d # v2.4.1
