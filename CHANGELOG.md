@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/JakobMelchard/observe/compare/v0.2.3...v0.2.4) (2026-10-26)
+
+
+### Documentation
+
+* pin install tags to v0.2.3 ([#86](https://github.com/JakobMelchard/observe/issues/86)) ([b08d10f](https://github.com/JakobMelchard/observe/commit/b08d10f9cfbc831221c9300ce40f1c748625935b))
+
 ## [0.2.3](https://github.com/JakobMelchard/observe/compare/v0.2.2...v0.2.3) (2026-10-16)
 
 
