@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/JakobMelchard/observe/compare/v0.2.4...v0.2.5) (2026-10-30)
+
+
+### Bug Fixes
+
+* **release:** keep uv.lock and the README install tag on the release version ([#91](https://github.com/JakobMelchard/observe/issues/91)) ([6a47ffc](https://github.com/JakobMelchard/observe/commit/6a47ffc82d70b49fb703c8febefc7b589e7d262a))
+
 ## [0.2.4](https://github.com/JakobMelchard/observe/compare/v0.2.3...v0.2.4) (2026-10-26)
 
 
