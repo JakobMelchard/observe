@@ -6,7 +6,13 @@
       "include-component-in-tag": false,
       "extra-files": [
         { "type": "toml", "path": "sinks/github/pyproject.toml", "jsonpath": "$.project.version" },
-        { "type": "toml", "path": "sinks/sentry/pyproject.toml", "jsonpath": "$.project.version" }
+        { "type": "toml", "path": "sinks/sentry/pyproject.toml", "jsonpath": "$.project.version" },
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='observe')].version"
+        },
+        { "type": "generic", "path": "README.md" }
       ]
     }
   },

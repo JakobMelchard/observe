@@ -23,5 +23,14 @@ def test_every_package_has_the_manifest_version() -> None:
 def test_release_please_bumps_every_sink() -> None:
     pkg = json.loads((ROOT / "release-please-config.json").read_text())["packages"]["."]
     assert pkg["release-type"] == "python"
-    bumped = {e["path"] for e in pkg["extra-files"] if e["jsonpath"] == "$.project.version"}
+    bumped = {e["path"] for e in pkg["extra-files"] if e.get("jsonpath") == "$.project.version"}
     assert bumped == {str(p.relative_to(ROOT)) for p in PACKAGES[1:]}
+    assert {e["path"] for e in pkg["extra-files"]} >= {"uv.lock", "README.md"}
+
+
+def test_lock_and_readme_have_the_manifest_version() -> None:
+    manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())["."]
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    assert [p["version"] for p in lock["package"] if p["name"] == "observe"] == [manifest]
+    readme = (ROOT / "README.md").read_text()
+    assert readme.count(f'tag = "v{manifest}"') == len(PACKAGES)
