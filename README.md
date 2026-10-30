@@ -19,12 +19,14 @@ app = ObserveMiddleware(my_wsgi_app, ObserveConfig())
 
 ## Install
 
+<!-- x-release-please-start-version -->
 ```toml
 [tool.uv.sources]
-observe = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.3" }
-observe-github = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.3", subdirectory = "sinks/github" }
-observe-sentry = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.3", subdirectory = "sinks/sentry" }
+observe = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.4" }
+observe-github = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.4", subdirectory = "sinks/github" }
+observe-sentry = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.4", subdirectory = "sinks/sentry" }
 ```
+<!-- x-release-please-end -->
 
 `observe`, `observe-github` and `observe-sentry` share one version.
 
