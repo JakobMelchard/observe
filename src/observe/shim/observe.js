@@ -1,5 +1,18 @@
 /** @param {ObserveWindow} win */ (function (win) {
-  var cfg = win.__OBSERVE_CONFIG__ || {};
+  var cfg = tagConfig() || win.__OBSERVE_CONFIG__ || {};
+
+  /** @returns {ObserveConfig | null} the middleware's config from this script's data-config */
+  function tagConfig() {
+    var el = win.document && win.document.currentScript;
+    var data = el && el.dataset && el.dataset.config;
+    if (!data) return null;
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      console.warn("observe: data-config is not JSON", e);
+      return null;
+    }
+  }
   var endpoint = cfg.endpoint || "/__observe__/otlp";
   // A static site has no middleware behind it: feedback can go to a remote receiver with a
   // bearer token, and the OTLP spans can be switched off when nothing collects them.
@@ -339,7 +352,8 @@
 // Types sit after the IIFE: a JSDoc block in front of it would be read twice.
 
 /**
- * Set by the middleware (or a static page) as window.__OBSERVE_CONFIG__ before the shim runs.
+ * Set by the middleware as the shim tag's data-config, or by a static page as
+ * window.__OBSERVE_CONFIG__ before the shim runs.
  *
  * @typedef {object} ObserveConfig
  * @property {string} [repo] repo the feedback is filed against
