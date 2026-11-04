@@ -1,5 +1,5 @@
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 CANDIDATES = ("observe.toml", "pyproject.toml")
@@ -39,7 +39,10 @@ class ObserveConfig:
 
 
 def load_config(path: str | Path | None = None) -> ObserveConfig:
-    """Load config from a TOML file, or from the first candidate found in cwd."""
+    """Load config from a TOML file, or from the first candidate found in cwd.
+
+    A value of the wrong type raises ``ValueError`` naming its key.
+    """
     cfg = ObserveConfig()
     found = Path(path) if path is not None else _discover()
     if found is None:
@@ -48,10 +51,16 @@ def load_config(path: str | Path | None = None) -> ObserveConfig:
     raw = tomllib.loads(found.read_text())
     if found.name == "pyproject.toml":
         raw = raw.get("tool", {}).get("observe", {})
+    types = {f.name: f.type for f in fields(ObserveConfig)}
     for (section, key), field in FIELDS.items():
         values = raw.get(section, {})
         if key in values:
-            setattr(cfg, field, values[key])
+            value = values[key]
+            # Exact match: bool is an int subclass, and "false" would be a truthy str.
+            if type(value) is not types[field]:
+                want = getattr(types[field], "__name__", types[field])
+                raise ValueError(f"{found}: {section}.{key} must be {want}, got {value!r}")
+            setattr(cfg, field, value)
     return cfg
 
 
