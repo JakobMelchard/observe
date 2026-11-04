@@ -113,12 +113,24 @@ def test_feedback_pushes_event(core: ObserveCore) -> None:
     assert sink.feedback[0].user == {"name": "j"}
 
 
-def test_malformed_json_is_tolerated(core: ObserveCore) -> None:
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"",
+        b"{not json",
+        b"[1]",
+        b"{}",
+        b'{"message": 3}',
+        b'{"message": null}',
+        b'{"message": " \\n\\t "}',
+    ],
+)
+def test_feedback_without_a_message_is_rejected(core: ObserveCore, body: bytes) -> None:
     sink = Recorder()
     router.register(sink)
-    reply = core.reply(must_route(core, "/__observe__/feedback", "POST"), b"{not json")
-    assert reply.status == 200
-    assert sink.feedback[0].message == ""
+    reply = core.reply(must_route(core, "/__observe__/feedback", "POST"), body)
+    assert reply.status == 400
+    assert sink.feedback == []
 
 
 def test_otlp_requires_json_content_type(core: ObserveCore) -> None:
