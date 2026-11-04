@@ -58,6 +58,8 @@ uv run ruff check . && uv run ruff format --check .
 
 ## Frontend
 
+The middleware injects one external tag, `<script src="/__observe__/observe.js" data-config="...">`, and no inline script, so a CSP of `script-src 'self'` is enough.
+
 Without middleware, set `window.__OBSERVE_CONFIG__` before loading `observe.js`: `feedbackEndpoint` and `token` for a remote receiver, `repo` for the issue target, `traces: false` to skip OTLP spans, `registerSw: true` to register the worker, `button: false` to drop the trigger.
 
 To share a page worker with the app, leave `register_sw` off and import it there:
