@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   release-please:
-    uses: JakobMelchard/.github/.github/workflows/release.yml@df18859960a81d988ca3c7498bdd6a2dc976fec9 # v2.6.0
+    uses: JakobMelchard/.github/.github/workflows/release.yml@1a10ff74d74f3e87475bfd72753b712557ad619b # v2.7.0
     # melchbot authors the release PR and creates the tag, so pull_request workflows run
     # on the release PR. Its credentials come from Infisical over OIDC.
     # A called workflow cannot be granted more than the caller holds; without
