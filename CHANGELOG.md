@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.5](https://github.com/JakobMelchard/observe/compare/v0.2.4...v0.2.5) (2026-11-12)
+
+
+### Bug Fixes
+
+* **config:** refuse mistyped values and load config in the quickstart ([#100](https://github.com/JakobMelchard/observe/issues/100)) ([db904dd](https://github.com/JakobMelchard/observe/commit/db904dd1c70bd1fc87627fb03e42cf7bb71d8616))
+* **core:** reject feedback without a message ([#99](https://github.com/JakobMelchard/observe/issues/99)) ([0aea5eb](https://github.com/JakobMelchard/observe/commit/0aea5eb78e4dcd70c03022ba8c47197b5c344f15))
+* **inject:** pass the config on the shim tag instead of an inline script ([#101](https://github.com/JakobMelchard/observe/issues/101)) ([358753b](https://github.com/JakobMelchard/observe/commit/358753bb1fb8934bfe86c077cd24059cebbb1833))
+* **release:** keep uv.lock and the README install tag on the release version ([#91](https://github.com/JakobMelchard/observe/issues/91)) ([6a47ffc](https://github.com/JakobMelchard/observe/commit/6a47ffc82d70b49fb703c8febefc7b589e7d262a))
+
 ## [0.2.4](https://github.com/JakobMelchard/observe/compare/v0.2.3...v0.2.4) (2026-10-26)
 
 
