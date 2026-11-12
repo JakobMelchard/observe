@@ -118,10 +118,12 @@ def test_feedback_pushes_event(core: ObserveCore) -> None:
     [
         b"",
         b"{not json",
+        b"\xff\xfe",
         b"[1]",
         b"{}",
         b'{"message": 3}',
         b'{"message": null}',
+        b'{"message": ""}',
         b'{"message": " \\n\\t "}',
     ],
 )
@@ -130,6 +132,7 @@ def test_feedback_without_a_message_is_rejected(core: ObserveCore, body: bytes) 
     router.register(sink)
     reply = core.reply(must_route(core, "/__observe__/feedback", "POST"), body)
     assert reply.status == 400
+    assert json.loads(reply.body) == {"error": "feedback needs a message"}
     assert sink.feedback == []
 
 

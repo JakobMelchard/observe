@@ -325,7 +325,7 @@ def _cross_site(headers: Mapping[str, str]) -> bool:
 def _loads(body: bytes) -> dict[str, object]:
     try:
         data = json.loads(body or b"{}")
-    except json.JSONDecodeError:
+    except ValueError:
         return {}
     return data if isinstance(data, dict) else {}
 
