@@ -5,12 +5,12 @@ injected into the pages of the app it wraps. Zero runtime dependencies; sinks ar
 
 ```python
 from observe import router
-from observe.config.config import ObserveConfig
+from observe.config.config import load_config
 from observe.middleware.wsgi import ObserveMiddleware
 from observe_sentry import SentrySink
 
 router.register(SentrySink())
-app = ObserveMiddleware(my_wsgi_app, ObserveConfig())
+app = ObserveMiddleware(my_wsgi_app, load_config())
 ```
 
 `observe.middleware.asgi` and `observe.middleware.http_server` are the other adapters.
@@ -41,7 +41,7 @@ uv run ruff check . && uv run ruff format --check .
 
 ## Config
 
-`observe.toml` or `pyproject.toml` in the working directory; see `observe.toml.example`. In `pyproject.toml` the tables live under `tool.observe`, e.g. `[tool.observe.collector]`.
+`load_config()` reads `observe.toml` or `pyproject.toml` in the working directory (or the path it is given); see `observe.toml.example`. A value of the wrong type raises `ValueError` at startup. `ObserveConfig()` alone is the defaults and reads no file. In `pyproject.toml` the tables live under `tool.observe`, e.g. `[tool.observe.collector]`.
 
 | Key | Default | What |
 |-----|---------|------|

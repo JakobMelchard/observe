@@ -656,3 +656,33 @@ def test_pyproject_ignores_top_level_tables(
     monkeypatch.chdir(tmp_path)
     (tmp_path / "pyproject.toml").write_text("[collector]\nfeedback_per_minute = 3\n")
     assert load_config().feedback_per_minute == 10
+
+
+@pytest.mark.parametrize(
+    ("line", "key"),
+    [
+        ('[collector]\nmax_body_bytes = "1M"\n', "collector.max_body_bytes"),
+        ('[collector]\nsame_site = "false"\n', "collector.same_site"),
+        ("[collector]\nfeedback_per_day = true\n", "collector.feedback_per_day"),
+        ("[frontend]\nbutton = 0\n", "frontend.button"),
+        ("[frontend]\nfeedback_label = 3\n", "frontend.feedback_label"),
+        ("[collector]\nmax_body_bytes = -1\n", "collector.max_body_bytes"),
+        ("collector = 3\n", "collector"),
+    ],
+)
+def test_a_mistyped_value_is_refused_at_load(tmp_path: Path, line: str, key: str) -> None:
+    path = tmp_path / "observe.toml"
+    path.write_text(line)
+    with pytest.raises(ValueError, match=key):
+        load_config(path)
+
+
+def test_every_config_field_round_trips_through_toml(tmp_path: Path) -> None:
+    path = tmp_path / "observe.toml"
+    path.write_text(
+        '[collector]\nendpoint = "/x"\n[frontend]\nfeedback_label = "Bug"\n'
+        'enrich_hook = "h"\nregister_sw = true\nbutton = false\n'
+    )
+    cfg = load_config(path)
+    assert (cfg.endpoint, cfg.feedback_label, cfg.enrich_hook) == ("/x", "Bug", "h")
+    assert (cfg.register_sw, cfg.button) == (True, False)
