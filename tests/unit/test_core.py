@@ -666,6 +666,8 @@ def test_pyproject_ignores_top_level_tables(
         ("[collector]\nfeedback_per_day = true\n", "collector.feedback_per_day"),
         ("[frontend]\nbutton = 0\n", "frontend.button"),
         ("[frontend]\nfeedback_label = 3\n", "frontend.feedback_label"),
+        ("[collector]\nmax_body_bytes = -1\n", "collector.max_body_bytes"),
+        ("collector = 3\n", "collector"),
     ],
 )
 def test_a_mistyped_value_is_refused_at_load(tmp_path: Path, line: str, key: str) -> None:

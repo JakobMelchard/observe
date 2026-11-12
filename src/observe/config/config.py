@@ -41,7 +41,7 @@ class ObserveConfig:
 def load_config(path: str | Path | None = None) -> ObserveConfig:
     """Load config from a TOML file, or from the first candidate found in cwd.
 
-    A value of the wrong type raises ``ValueError`` naming its key.
+    A malformed section, a mistyped value or a negative limit raises ``ValueError``.
     """
     cfg = ObserveConfig()
     found = Path(path) if path is not None else _discover()
@@ -54,12 +54,16 @@ def load_config(path: str | Path | None = None) -> ObserveConfig:
     types = {f.name: f.type for f in fields(ObserveConfig)}
     for (section, key), field in FIELDS.items():
         values = raw.get(section, {})
+        if not isinstance(values, dict):
+            raise ValueError(f"{found}: {section} must be a table, got {values!r}")
         if key in values:
             value = values[key]
             # Exact match: bool is an int subclass, and "false" would be a truthy str.
             if type(value) is not types[field]:
                 want = getattr(types[field], "__name__", types[field])
                 raise ValueError(f"{found}: {section}.{key} must be {want}, got {value!r}")
+            if types[field] is int and value < 0:
+                raise ValueError(f"{found}: {section}.{key} must not be negative, got {value!r}")
             setattr(cfg, field, value)
     return cfg
 
