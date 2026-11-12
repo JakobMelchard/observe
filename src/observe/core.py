@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from html import escape
 from http import HTTPStatus
 from importlib.resources import files
 from urllib.parse import urlsplit
@@ -151,8 +152,8 @@ class ObserveCore:
 
     def __init__(self, cfg: ObserveConfig) -> None:
         self.cfg = cfg
-        # The same bytes are inlined into a <script> below, where a literal
-        # "<" could close the element. The escape is still valid JSON.
+        # Served as JSON and, escaped, as an attribute below. "<" stays escaped so
+        # a page that inlines these bytes into a <script> cannot have it closed.
         self.config_bytes = (
             json.dumps(
                 {
@@ -166,14 +167,12 @@ class ObserveCore:
             .replace("<", "\\u003c")
             .encode()
         )
-        # Config first. The shim is a classic script, so it runs the moment
-        # it loads, before the parser reaches anything after it. Injected the
-        # other way round, every option would silently fall back to its default.
+        # The config rides on the shim's own tag, which reads it via
+        # document.currentScript: an inline script would need CSP 'unsafe-inline'.
         self._tag = (
-            b"<script>window.__OBSERVE_CONFIG__ = "
-            + self.config_bytes
-            + b";</script>"
-            + b'<script src="/__observe__/observe.js"></script>'
+            b'<script src="/__observe__/observe.js" data-config="'
+            + escape(self.config_bytes.decode(), quote=True).encode()
+            + b'"></script>'
         )
         self._shims: dict[str, bytes] = {}
         self._rates = {

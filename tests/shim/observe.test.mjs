@@ -185,3 +185,111 @@ test("no service worker is registered unless registerSw is set", function () {
   );
   assert.equal(registered, 0);
 });
+
+test("the config is read from the shim tag's data-config", function () {
+  let registered = 0;
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    {
+      __OBSERVE_CONFIG__: undefined,
+      document: {
+        body: null,
+        addEventListener() {},
+        currentScript: { dataset: { config: JSON.stringify({ registerSw: true }) } },
+      },
+      navigator: {
+        serviceWorker: {
+          register() {
+            registered += 1;
+            return Promise.resolve();
+          },
+        },
+      },
+    },
+  );
+  assert.equal(registered, 1);
+});
+
+test("a static page's window config is used when the tag carries none", function () {
+  let registered = 0;
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    {
+      __OBSERVE_CONFIG__: { registerSw: true },
+      document: { body: null, addEventListener() {}, currentScript: { dataset: {} } },
+      navigator: {
+        serviceWorker: {
+          register() {
+            registered += 1;
+            return Promise.resolve();
+          },
+        },
+      },
+    },
+  );
+  assert.equal(registered, 1);
+});
+
+test("a tag config that is not JSON warns and falls back to the window config", function () {
+  let registered = 0;
+  /** @type {unknown[][]} */
+  const warned = [];
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    {
+      __OBSERVE_CONFIG__: { registerSw: true },
+      console: {
+        warn() {
+          warned.push([...arguments]);
+        },
+      },
+      document: {
+        body: null,
+        addEventListener() {},
+        currentScript: { dataset: { config: "{bad" } },
+      },
+      navigator: {
+        serviceWorker: {
+          register() {
+            registered += 1;
+            return Promise.resolve();
+          },
+        },
+      },
+    },
+  );
+  assert.equal(warned.length, 1);
+  assert.equal(registered, 1);
+});
+
+test("a valid tag config wins over the window config", function () {
+  let registered = 0;
+  load(
+    function () {
+      return Promise.resolve({ ok: true });
+    },
+    {
+      __OBSERVE_CONFIG__: { registerSw: true },
+      document: {
+        body: null,
+        addEventListener() {},
+        currentScript: { dataset: { config: JSON.stringify({ registerSw: false }) } },
+      },
+      navigator: {
+        serviceWorker: {
+          register() {
+            registered += 1;
+            return Promise.resolve();
+          },
+        },
+      },
+    },
+  );
+  assert.equal(registered, 0);
+});

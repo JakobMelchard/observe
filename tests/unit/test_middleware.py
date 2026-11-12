@@ -114,7 +114,7 @@ def test_app_iterable_is_closed(content_type: str) -> None:
 def test_get_html_contains_config_json(client: Client) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"__OBSERVE_CONFIG__" in resp.data
+    assert b'<script src="/__observe__/observe.js" data-config="' in resp.data
 
 
 def test_config_json_shape(client: Client) -> None:

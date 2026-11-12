@@ -89,7 +89,7 @@ def test_asgi_injects_html() -> None:
     start, body = asgi_request("/")
     assert start["status"] == 200
     assert b"observe.js" in body
-    assert b"__OBSERVE_CONFIG__" in body
+    assert b'<script src="/__observe__/observe.js" data-config="' in body
 
 
 def test_asgi_rewrites_content_length() -> None:

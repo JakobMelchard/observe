@@ -6,6 +6,7 @@ import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Never
 
@@ -269,25 +270,40 @@ def test_shim_is_cached(core: ObserveCore) -> None:
     assert core.shim("observe.js") is core.shim("observe.js")
 
 
-class TestInjectionOrder:
+def tag_config(page: bytes) -> dict[str, Any]:
+    """The config the shim reads from its tag's data-config, as the browser decodes it."""
+    found: list[dict[str, Any]] = []
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            values = dict(attrs)
+            if tag == "script" and values.get("data-config") is not None:
+                found.append(json.loads(values["data-config"] or ""))
+
+    Parser().feed(page.decode())
+    assert len(found) == 1
+    return found[0]
+
+
+class TestInjectedTag:
     """The shim is a classic script: it runs as soon as it loads.
 
-    Anything the page must give it has to be in the document before the
-    `<script src>` tag, or the shim sees `undefined` and quietly uses its
-    defaults, so an option like `register_sw=False` does nothing.
+    Its config rides on its own tag, so nothing has to come first, and a
+    `script-src 'self'` CSP, which drops inline scripts, still lets it through.
     """
 
-    def test_config_is_set_before_the_shim_is_loaded(self) -> None:
+    def test_no_inline_script_is_injected(self) -> None:
         core = ObserveCore(ObserveConfig())
         page = core.inject(b"<!doctype html><html><head></head><body></body></html>")
-        assert page.index(b"__OBSERVE_CONFIG__") < page.index(b"observe.js")
+        assert page.count(b"<script") == 1
+        assert b'<script src="/__observe__/observe.js" data-config="' in page
 
     def test_options_reach_the_page(self) -> None:
         core = ObserveCore(ObserveConfig(register_sw=True, button=False, feedback_label="Sag was"))
-        page = core.inject(b"<html><head></head></html>")
-        assert b'"registerSw": true' in page
-        assert b'"button": false' in page
-        assert b"Sag was" in page
+        cfg = tag_config(core.inject(b"<html><head></head></html>"))
+        assert cfg["registerSw"] is True
+        assert cfg["button"] is False
+        assert cfg["feedbackLabel"] == "Sag was"
 
 
 def test_the_worker_is_not_registered_by_default() -> None:
@@ -438,14 +454,16 @@ class TestQueue:
         assert len(made) == 1
 
 
-class TestInlineConfig:
-    """The config is inlined into a `<script>`; a `<` in it must not end the element."""
+class TestTagConfig:
+    """The config is an attribute value; a quote or `<` in it must not end it."""
 
     def test_markup_in_a_config_value_is_escaped(self) -> None:
-        label = "</script><script>alert(1)</script>"
+        label = """\'"><script>alert(1)</script>"""
         core = ObserveCore(ObserveConfig(feedback_label=label))
         page = core.inject(b"<html><head></head></html>")
-        assert page.count(b"</script>") == 2
+        assert page.count(b"<script") == 1
+        assert page.count(b"</script>") == 1
+        assert tag_config(page)["feedbackLabel"] == label
         assert json.loads(core.config_bytes)["feedbackLabel"] == label
 
 
