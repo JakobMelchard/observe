@@ -109,6 +109,7 @@ class Reply:
 CROSS_SITE = Reply(403, JSON, b'{"error": "cross-site request"}')
 TOO_LARGE = Reply(413, JSON, b'{"error": "body too large"}')
 TOO_MANY = Reply(429, JSON, b'{"error": "too many requests"}')
+NO_MESSAGE = Reply(400, JSON, b'{"error": "feedback needs a message"}')
 
 #: Length of a rate-limit window, in seconds.
 WINDOW = 60.0
@@ -247,7 +248,12 @@ class ObserveCore:
             case _ if self._too_large(len(body)):
                 return TOO_LARGE
             case Kind.FEEDBACK:
-                self._push_feedback(_loads(body))
+                data = _loads(body)
+                # Each event can open a GitHub issue; one without text is noise.
+                message = data.get("message")
+                if not isinstance(message, str) or not message.strip():
+                    return NO_MESSAGE
+                self._push_feedback(data)
             case Kind.OTLP if body and "json" in content_type:
                 for event in otlp_to_errors(_loads(body)):
                     router.push_error(event)
@@ -318,7 +324,7 @@ def _cross_site(headers: Mapping[str, str]) -> bool:
 def _loads(body: bytes) -> dict[str, object]:
     try:
         data = json.loads(body or b"{}")
-    except json.JSONDecodeError:
+    except ValueError:
         return {}
     return data if isinstance(data, dict) else {}
 

@@ -337,6 +337,7 @@ def test_http_server_otlp_ignores_query_string(http_url: str) -> None:
 
 
 FEEDBACK = "/__observe__/feedback"
+HI = b'{"message": "hi"}'
 
 
 def limited_config() -> ObserveConfig:
@@ -399,17 +400,17 @@ def test_asgi_refuses_cross_site_posts() -> None:
     sink = Recorder()
     router.register(sink)
     app = ObserveASGIMiddleware(demo_app, limited_config())
-    assert asgi_post(app, [b"{}"], [(b"sec-fetch-site", b"cross-site")])[0] == 403
+    assert asgi_post(app, [HI], [(b"sec-fetch-site", b"cross-site")])[0] == 403
     mismatch = [(b"origin", b"https://other.test"), (b"host", b"app.test")]
-    assert asgi_post(app, [b"{}"], mismatch)[0] == 403
+    assert asgi_post(app, [HI], mismatch)[0] == 403
     assert sink.feedback == []
     match = [(b"origin", b"http://app.test"), (b"host", b"app.test")]
-    assert asgi_post(app, [b"{}"], match)[0] == 200
+    assert asgi_post(app, [HI], match)[0] == 200
 
 
 def test_asgi_refuses_posts_that_come_too_fast() -> None:
     app = ObserveASGIMiddleware(demo_app, limited_config())
-    assert [asgi_post(app, [b"{}"])[0] for _ in range(3)] == [200, 200, 429]
+    assert [asgi_post(app, [HI])[0] for _ in range(3)] == [200, 200, 429]
 
 
 @pytest.fixture
@@ -425,7 +426,7 @@ def limited_url() -> Iterator[str]:
     server.server_close()
 
 
-def post_status(url: str, data: bytes = b"{}", headers: dict[str, str] | None = None) -> int:
+def post_status(url: str, data: bytes = HI, headers: dict[str, str] | None = None) -> int:
     origin = urllib.parse.urlsplit(url)
     headers = {"Origin": f"{origin.scheme}://{origin.netloc}", **(headers or {})}
     req = urllib.request.Request(url, data=data, headers=headers)

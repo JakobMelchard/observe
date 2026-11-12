@@ -330,6 +330,7 @@ def test_otlp_logs_calls_router(client: Client) -> None:
 
 
 FEEDBACK = "/__observe__/feedback"
+HI = b'{"message": "hi"}'
 
 
 @pytest.fixture
@@ -378,20 +379,18 @@ def test_oversized_post_is_refused_before_the_body_is_read() -> None:
 
 def test_cross_site_post_is_refused(limited: tuple[Client, list[Any]]) -> None:
     client, events = limited
-    resp = client.post(FEEDBACK, data=b"{}", headers={"Sec-Fetch-Site": "cross-site"})
+    resp = client.post(FEEDBACK, data=HI, headers={"Sec-Fetch-Site": "cross-site"})
     assert resp.status_code == 403
-    resp = client.post(FEEDBACK, data=b"{}", headers={"Origin": "https://other.test"})
+    resp = client.post(FEEDBACK, data=HI, headers={"Origin": "https://other.test"})
     assert resp.status_code == 403
     assert events == []
-    resp = client.post(FEEDBACK, data=b"{}", headers={"Origin": "http://localhost"})
+    resp = client.post(FEEDBACK, data=HI, headers={"Origin": "http://localhost"})
     assert resp.status_code == 200
     assert len(events) == 1
 
 
 def test_posts_that_come_too_fast_are_refused(limited: tuple[Client, list[Any]]) -> None:
     client, events = limited
-    statuses = [
-        client.post(FEEDBACK, data=b"{}", headers=SAME_ORIGIN).status_code for _ in range(3)
-    ]
+    statuses = [client.post(FEEDBACK, data=HI, headers=SAME_ORIGIN).status_code for _ in range(3)]
     assert statuses == [200, 200, 429]
     assert len(events) == 2

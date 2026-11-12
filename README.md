@@ -75,7 +75,7 @@ importScripts("/__observe__/observe.sw.js");
 | `/__observe__/observe.js` | GET | browser shim |
 | `/__observe__/observe.sw.js` | GET | service worker |
 | `/__observe__/config` | GET | frontend config JSON |
-| `/__observe__/feedback` | POST | `FeedbackEvent` to the router |
+| `/__observe__/feedback` | POST | `FeedbackEvent` to the router; 400 without a non-blank `message` |
 | `/__observe__/otlp/...` | POST | OTLP JSON to `ErrorEvent`s to the router |
 
 ## Layout
