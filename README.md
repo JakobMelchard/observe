@@ -43,18 +43,18 @@ uv run ruff check . && uv run ruff format --check .
 
 `load_config()` reads `observe.toml` or `pyproject.toml` in the working directory (or the path it is given); see `observe.toml.example`. A value of the wrong type raises `ValueError` at startup. `ObserveConfig()` alone is the defaults and reads no file. In `pyproject.toml` the tables live under `tool.observe`, e.g. `[tool.observe.collector]`.
 
-| Key | Default | What |
-|-----|---------|------|
-| `collector.endpoint` | `/__observe__/otlp` | where the browser sends spans; the built-in receiver only listens on the default, so change it only to point at a remote collector |
-| `collector.max_body_bytes` | `1048576` | larger POSTs get 413 |
-| `collector.same_site` | `true` | cross-site POSTs get 403, and so does feedback without `Origin` or `Sec-Fetch-Site` |
-| `collector.feedback_per_minute` | `10` | per client address, 429 beyond; `0` lifts it |
-| `collector.feedback_per_day` | `50` | all clients together, 429 beyond; `0` lifts it |
-| `collector.otlp_per_minute` | `300` | same |
-| `frontend.feedback_label` | `Feedback` | trigger text |
-| `frontend.enrich_hook` | `__observe_enrich__` | window function that adds context |
-| `frontend.register_sw` | `false` | register `observe.sw.js` as the page's worker |
-| `frontend.button` | `true` | floating trigger; `false` and call `window.__observe__.open()` |
+| Key                             | Default              | What                                                                                                                               |
+| ------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `collector.endpoint`            | `/__observe__/otlp`  | where the browser sends spans; the built-in receiver only listens on the default, so change it only to point at a remote collector |
+| `collector.max_body_bytes`      | `1048576`            | larger POSTs get 413                                                                                                               |
+| `collector.same_site`           | `true`               | cross-site POSTs get 403, and so does feedback without `Origin` or `Sec-Fetch-Site`                                                |
+| `collector.feedback_per_minute` | `10`                 | per client address, 429 beyond; `0` lifts it                                                                                       |
+| `collector.feedback_per_day`    | `50`                 | all clients together, 429 beyond; `0` lifts it                                                                                     |
+| `collector.otlp_per_minute`     | `300`                | same                                                                                                                               |
+| `frontend.feedback_label`       | `Feedback`           | trigger text                                                                                                                       |
+| `frontend.enrich_hook`          | `__observe_enrich__` | window function that adds context                                                                                                  |
+| `frontend.register_sw`          | `false`              | register `observe.sw.js` as the page's worker                                                                                      |
+| `frontend.button`               | `true`               | floating trigger; `false` and call `window.__observe__.open()`                                                                     |
 
 ## Frontend
 
@@ -70,20 +70,20 @@ importScripts("/__observe__/observe.sw.js");
 
 ## Endpoints
 
-| Path | Method | What |
-|------|--------|------|
-| `/__observe__/observe.js` | GET | browser shim |
-| `/__observe__/observe.sw.js` | GET | service worker |
-| `/__observe__/config` | GET | frontend config JSON |
-| `/__observe__/feedback` | POST | `FeedbackEvent` to the router; 400 without a non-blank `message` |
-| `/__observe__/otlp/...` | POST | OTLP JSON to `ErrorEvent`s to the router |
+| Path                         | Method | What                                                             |
+| ---------------------------- | ------ | ---------------------------------------------------------------- |
+| `/__observe__/observe.js`    | GET    | browser shim                                                     |
+| `/__observe__/observe.sw.js` | GET    | service worker                                                   |
+| `/__observe__/config`        | GET    | frontend config JSON                                             |
+| `/__observe__/feedback`      | POST   | `FeedbackEvent` to the router; 400 without a non-blank `message` |
+| `/__observe__/otlp/...`      | POST   | OTLP JSON to `ErrorEvent`s to the router                         |
 
 ## Layout
 
-| Path | What |
-|------|------|
-| `src/observe/core.py` | routing, injection, OTLP ingest; the adapters only read and write bodies |
-| `src/observe/router.py` | register sinks, fan out events |
-| `src/observe/middleware/` | WSGI, ASGI, `http.server` adapters |
-| `src/observe/shim/` | `observe.js`, `observe.sw.js` |
-| `sinks/github/`, `sinks/sentry/` | sink packages |
+| Path                             | What                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `src/observe/core.py`            | routing, injection, OTLP ingest; the adapters only read and write bodies |
+| `src/observe/router.py`          | register sinks, fan out events                                           |
+| `src/observe/middleware/`        | WSGI, ASGI, `http.server` adapters                                       |
+| `src/observe/shim/`              | `observe.js`, `observe.sw.js`                                            |
+| `sinks/github/`, `sinks/sentry/` | sink packages                                                            |

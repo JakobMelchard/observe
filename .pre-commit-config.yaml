@@ -13,7 +13,7 @@ repos:
       - id: ruff-check
       - id: ruff-format
   - repo: https://github.com/biomejs/pre-commit
-    rev: v2.5.15
+    rev: v2.6.6
     hooks:
       - id: biome-ci
   - repo: local
@@ -35,6 +35,6 @@ repos:
         pass_filenames: false
         stages: [pre-push]
   - repo: https://github.com/JakobMelchard/.github
-    rev: hooks-v2.1.0
+    rev: hooks-v2.2.0
     hooks:
       - id: conventional-commit
