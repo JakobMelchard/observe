@@ -14,8 +14,41 @@ app = ObserveMiddleware(my_wsgi_app, load_config())
 ```
 
 `observe.middleware.asgi` and `observe.middleware.http_server` are the other adapters.
-`GitHubSink(enrich=fn)` files feedback as issues; `fn` takes a `FeedbackEvent` and returns
-`{"label", "title", "description"}` or `None`.
+`SentrySink` forwards `ErrorEvent`s to Sentry. `GitHubSink` (`from observe_github import GitHubSink`)
+files `FeedbackEvent`s as issues against `repo` (or the git `origin` remote of `cwd`), authenticating
+via `GITHUB_TOKEN` or `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY` (requires `observe-github[app]`).
+`GitHubSink(enrich=fn)` takes an optional callable returning `{"label", "title", "description"}` or `None`.
+
+To try it locally without Sentry or GitHub credentials:
+
+```python
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from observe import router
+from observe.config.config import ObserveConfig
+from observe.middleware.http_server import patch_handler
+
+
+class StdoutSink:
+    push_error = staticmethod(print)
+    push_feedback = staticmethod(print)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        body = b'<!doctype html><head></head><body><button onclick="nonexistent()">Error</button></body>'
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+router.register(StdoutSink())
+patch_handler(Handler, ObserveConfig())
+HTTPServer(("127.0.0.1", 8000), Handler).serve_forever()
+```
+
+Open `http://127.0.0.1:8000`, submit the Feedback widget or click Error, and `FeedbackEvent` / `ErrorEvent` prints in the terminal.
 
 ## Install
 
@@ -37,6 +70,7 @@ uv sync
 uv run pytest
 uv run mypy
 uv run ruff check . && uv run ruff format --check .
+npm ci && npm run typecheck
 ```
 
 ## Config
@@ -50,7 +84,7 @@ uv run ruff check . && uv run ruff format --check .
 | `collector.same_site`           | `true`               | cross-site POSTs get 403, and so does feedback without `Origin` or `Sec-Fetch-Site`                                                |
 | `collector.feedback_per_minute` | `10`                 | per client address, 429 beyond; `0` lifts it                                                                                       |
 | `collector.feedback_per_day`    | `50`                 | all clients together, 429 beyond; `0` lifts it                                                                                     |
-| `collector.otlp_per_minute`     | `300`                | same                                                                                                                               |
+| `collector.otlp_per_minute`     | `300`                | per client address, 429 beyond; `0` lifts it                                                                                       |
 | `frontend.feedback_label`       | `Feedback`           | trigger text                                                                                                                       |
 | `frontend.enrich_hook`          | `__observe_enrich__` | window function that adds context                                                                                                  |
 | `frontend.register_sw`          | `false`              | register `observe.sw.js` as the page's worker                                                                                      |

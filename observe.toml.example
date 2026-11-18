@@ -11,3 +11,4 @@ otlp_per_minute = 300
 feedback_label = "Feedback"
 enrich_hook = "__observe_enrich__"
 register_sw = false
+button = true
