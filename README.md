@@ -84,7 +84,7 @@ npm ci && npm run typecheck
 | `collector.same_site`           | `true`               | cross-site POSTs get 403, and so does feedback without `Origin` or `Sec-Fetch-Site`                                                |
 | `collector.feedback_per_minute` | `10`                 | per client address, 429 beyond; `0` lifts it                                                                                       |
 | `collector.feedback_per_day`    | `50`                 | all clients together, 429 beyond; `0` lifts it                                                                                     |
-| `collector.otlp_per_minute`     | `300`                | same                                                                                                                               |
+| `collector.otlp_per_minute`     | `300`                | per client address, 429 beyond; `0` lifts it                                                                                       |
 | `frontend.feedback_label`       | `Feedback`           | trigger text                                                                                                                       |
 | `frontend.enrich_hook`          | `__observe_enrich__` | window function that adds context                                                                                                  |
 | `frontend.register_sw`          | `false`              | register `observe.sw.js` as the page's worker                                                                                      |
