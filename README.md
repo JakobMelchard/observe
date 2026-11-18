@@ -30,9 +30,9 @@ PY
 - `load_config()` reads `observe.toml` or `pyproject.toml` (`tool.observe`); invalid types raise `ValueError`. `ObserveConfig()` reads no files. See [fields](observe.toml.example).
 - Middleware serves `/__observe__/observe.js`, `observe.sw.js`, `config`, `feedback` and `otlp/...`.
 - External injection supports `script-src 'self'`; worker registration is opt-in. Share an app worker with `importScripts("/__observe__/observe.sw.js")`.
-- Standalone shim config: `window.__OBSERVE_CONFIG__`; feedback UI: `window.__observe__.open()`.
+- Standalone shim: set `window.__OBSERVE_CONFIG__` before loading `observe.js`; feedback UI: `window.__observe__.open()`.
 
-Pin packages in a consuming project's `pyproject.toml`:
+Source overrides for a consuming project's `pyproject.toml`; also declare the desired packages in `project.dependencies`:
 
 <!-- x-release-please-start-version -->
 ```toml
