@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.6](https://github.com/JakobMelchard/observe/compare/v0.2.5...v0.2.6) (2026-11-18)
+
+### Documentation
+
+- clarify sink auth, local trial and frontend config example ([#106](https://github.com/JakobMelchard/observe/issues/106)) ([100d9cc](https://github.com/JakobMelchard/observe/commit/100d9cc487797b80c2d379faccd25b6437c59e97))
+
 ## [0.2.5](https://github.com/JakobMelchard/observe/compare/v0.2.4...v0.2.5) (2026-11-12)
 
 ### Bug Fixes
