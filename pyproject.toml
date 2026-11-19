@@ -39,6 +39,7 @@ ignore = ["ANN401"]
 [tool.ruff.lint.per-file-ignores]
 # Test doubles must match the Sink / ASGI signatures they stand in for.
 "tests/**" = ["ARG001", "ARG002", "ARG005"]
+"examples/**" = ["ARG001"]
 
 [tool.ruff.format]
 quote-style = "double"
