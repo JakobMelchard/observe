@@ -27,9 +27,9 @@ packages in `project.dependencies`:
 <!-- x-release-please-start-version -->
 ```toml
 [tool.uv.sources]
-observe = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.6" }
-observe-github = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.6", subdirectory = "sinks/github" }
-observe-sentry = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.6", subdirectory = "sinks/sentry" }
+observe = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.7" }
+observe-github = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.7", subdirectory = "sinks/github" }
+observe-sentry = { git = "https://github.com/JakobMelchard/observe.git", tag = "v0.2.7", subdirectory = "sinks/sentry" }
 ```
 <!-- x-release-please-end -->
 
