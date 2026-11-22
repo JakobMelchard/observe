@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/JakobMelchard/observe/compare/v0.2.6...v0.2.7) (2026-11-19)
+
+### Documentation
+
+- refresh showcase readme ([#108](https://github.com/JakobMelchard/observe/issues/108)) ([7b00038](https://github.com/JakobMelchard/observe/commit/7b000382fda847b1c9588cfc7a62a8a8d4ff245e))
+- rewrite README and move the WSGI demo into examples ([#110](https://github.com/JakobMelchard/observe/issues/110)) ([96e0796](https://github.com/JakobMelchard/observe/commit/96e0796b2aebc2634b6cb67b1e6d56c1d95cce84))
+
 ## [0.2.6](https://github.com/JakobMelchard/observe/compare/v0.2.5...v0.2.6) (2026-11-18)
 
 ### Documentation
