@@ -1,5 +1,3 @@
-# Hooks come from pinned repos; Renovate bumps the revs. CI runs the same config through
-# JakobMelchard/.github hooks.yml. Setup: brew install prek && prek install
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit]
 repos:

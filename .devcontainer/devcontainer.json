@@ -11,17 +11,7 @@
   "customizations": {
     "codespaces": {
       "repositories": {
-        "JakobMelchard/.githooks": {
-          "permissions": {
-            "contents": "read"
-          }
-        },
-        "JakobMelchard/.agents": {
-          "permissions": {
-            "contents": "read"
-          }
-        },
-        "JakobMelchard/.config": {
+        "JakobMelchard/.github": {
           "permissions": {
             "contents": "read"
           }
